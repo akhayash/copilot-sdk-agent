@@ -28,11 +28,14 @@ export async function POST(req: NextRequest) {
     // Execute pptxgenjs code in a controlled scope
     const pptxBuffer = await executePptxCode(code);
 
+    const safeTitle = (title || 'presentation').replace(/[^\w\s\-]/g, '_');
+    const encodedTitle = encodeURIComponent(title || 'presentation');
+
     return new NextResponse(pptxBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        'Content-Disposition': `attachment; filename="${title || 'presentation'}.pptx"`,
+        'Content-Disposition': `attachment; filename="${safeTitle}.pptx"; filename*=UTF-8''${encodedTitle}.pptx`,
       },
     });
   } catch (error) {
