@@ -197,16 +197,11 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
                 <div className="border-t px-3 pb-2.5 pt-2" style={{ borderColor: isExpanded ? 'var(--accent)' : 'var(--border)', opacity: isExpanded ? 1 : 0.9 }}>
                   {slide.bullets.length > 0 && (
                     <div className="pl-8">
-                      {slide.bullets.slice(0, isExpanded ? undefined : 3).map((b, i) => (
-                        <p key={i} className={`text-[10px] leading-relaxed ${isExpanded ? '' : 'truncate'}`} style={{ color: 'var(--text-secondary)' }}>
+                      {slide.bullets.map((b, i) => (
+                        <p key={i} className="text-[10px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                           <span style={{ color: 'var(--accent)', marginRight: 4 }}>•</span>{b}
                         </p>
                       ))}
-                      {!isExpanded && slide.bullets.length > 3 && (
-                        <p className="text-[9px]" style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>
-                          +{slide.bullets.length - 3} 項目
-                        </p>
-                      )}
                     </div>
                   )}
 
