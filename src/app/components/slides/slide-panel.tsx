@@ -33,8 +33,6 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
     }
   }, [thinking, isStreaming]);
 
-  const selectedItem = slides.find((s) => s.number === selectedSlide) ?? null;
-
   const handleDownload = async () => {
     if (!pptx) return;
     setIsGenerating(true);
@@ -68,73 +66,61 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
     }
   };
 
-  // Empty state — placeholder with two-column skeleton
+  // Empty state — placeholder with paired row skeleton
   if (phase === 'empty' && !thinking) {
     return (
       <div className="flex h-full flex-col overflow-hidden">
-        {/* Header */}
         <div className="flex items-center gap-2 border-b px-4 py-2.5" style={{ borderColor: 'var(--border)' }}>
           <Layers size={15} style={{ color: 'var(--border)' }} />
           <span className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>ワークスペース</span>
         </div>
-        {/* Two-column placeholder */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left: Scenario placeholder */}
-          <div className="flex w-[45%] flex-col border-r" style={{ borderColor: 'var(--border)' }}>
-            <div className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-              <FileText size={13} style={{ color: 'var(--border)' }} />
-              <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>シナリオ</span>
+        <div className="flex-1 overflow-y-auto">
+          {/* Column headers */}
+          <div className="sticky top-0 z-10 flex border-b px-4 py-1.5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+            <div className="flex w-[45%] items-center gap-1.5">
+              <FileText size={11} style={{ color: 'var(--border)' }} />
+              <span className="text-[10px] font-semibold" style={{ color: 'var(--text-secondary)' }}>シナリオ</span>
             </div>
-            <div className="flex-1 p-3">
-              {/* Skeleton story items */}
-              {[1, 2, 3, 4, 5].map((n) => (
-                <div key={n} className="mb-2 rounded-lg px-3 py-2.5" style={{ borderLeft: '3px solid var(--border)' }}>
-                  <div className="flex items-baseline gap-2">
-                    <span className="rounded text-[10px] font-bold tabular-nums" style={{ color: 'var(--border)' }}>
-                      {String(n).padStart(2, '0')}
-                    </span>
-                    <div className="h-3 flex-1 rounded" style={{ background: 'var(--surface-secondary)', maxWidth: `${70 + (n % 3) * 10}%` }} />
+            <div className="flex w-[55%] items-center gap-1.5">
+              <Presentation size={11} style={{ color: 'var(--border)' }} />
+              <span className="text-[10px] font-semibold" style={{ color: 'var(--text-secondary)' }}>プレビュー</span>
+            </div>
+          </div>
+          {/* Skeleton rows */}
+          {[1, 2, 3, 4, 5].map((n) => (
+            <div key={n} className="flex border-b" style={{ borderColor: 'var(--border)' }}>
+              {/* Scenario skeleton */}
+              <div className="w-[45%] border-r px-3 py-3" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex items-center gap-2">
+                  <div className="h-5 w-5 rounded" style={{ background: 'var(--surface-secondary)' }} />
+                  <div className="h-3 flex-1 rounded" style={{ background: 'var(--surface-secondary)', maxWidth: `${60 + (n % 3) * 12}%` }} />
+                </div>
+                <div className="mt-2 space-y-1.5 pl-7">
+                  <div className="h-2 rounded" style={{ background: 'var(--surface-secondary)', width: '85%' }} />
+                  <div className="h-2 rounded" style={{ background: 'var(--surface-secondary)', width: '55%' }} />
+                </div>
+              </div>
+              {/* Preview skeleton */}
+              <div className="flex w-[55%] items-start p-3">
+                <div
+                  className="flex aspect-[16/10] w-full flex-col rounded-lg border p-3"
+                  style={{ borderColor: 'var(--border)', borderStyle: 'dashed' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-4 rounded" style={{ background: 'var(--surface-secondary)' }} />
+                    <div className="h-2.5 rounded" style={{ background: 'var(--surface-secondary)', width: `${40 + (n % 3) * 15}%` }} />
                   </div>
-                  <div className="mt-1.5 space-y-1 pl-6">
-                    <div className="h-2 rounded" style={{ background: 'var(--surface-secondary)', width: '90%' }} />
-                    <div className="h-2 rounded" style={{ background: 'var(--surface-secondary)', width: '60%' }} />
+                  <div className="mt-auto space-y-1">
+                    <div className="h-1.5 rounded" style={{ background: 'var(--surface-secondary)', width: '70%' }} />
+                    <div className="h-1.5 rounded" style={{ background: 'var(--surface-secondary)', width: '45%' }} />
                   </div>
                 </div>
-              ))}
-              <p className="mt-4 text-center text-[10px]" style={{ color: 'var(--text-secondary)' }}>
-                チャットでプレゼンを依頼するとシナリオが表示されます
-              </p>
-            </div>
-          </div>
-          {/* Right: Image placeholder */}
-          <div className="flex w-[55%] flex-col">
-            <div className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-              <Presentation size={13} style={{ color: 'var(--border)' }} />
-              <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>プレビュー</span>
-            </div>
-            <div className="flex-1 p-3">
-              {/* Skeleton slide thumbnails */}
-              <div className="grid grid-cols-2 gap-2">
-                {[1, 2, 3, 4, 5, 6].map((n) => (
-                  <div
-                    key={n}
-                    className="flex aspect-[16/10] flex-col rounded-lg border p-3"
-                    style={{ borderColor: 'var(--border)', background: 'var(--surface)', borderStyle: 'dashed' }}
-                  >
-                    <div className="h-2 w-6 rounded" style={{ background: 'var(--surface-secondary)' }} />
-                    <div className="mt-2 h-2.5 rounded" style={{ background: 'var(--surface-secondary)', width: `${50 + (n % 3) * 15}%` }} />
-                    <div className="mt-auto space-y-1">
-                      <div className="h-1.5 rounded" style={{ background: 'var(--surface-secondary)', width: '80%' }} />
-                      <div className="h-1.5 rounded" style={{ background: 'var(--surface-secondary)', width: '50%' }} />
-                    </div>
-                  </div>
-                ))}
               </div>
-              <p className="mt-4 text-center text-[10px]" style={{ color: 'var(--text-secondary)' }}>
-                スライドのビジュアルプレビューがここに表示されます
-              </p>
             </div>
-          </div>
+          ))}
+          <p className="py-6 text-center text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+            チャットでプレゼンを依頼すると、シナリオとプレビューがペアで表示されます
+          </p>
         </div>
       </div>
     );
@@ -215,124 +201,112 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
         </div>
       )}
 
-      {/* Main content */}
-      <div className="flex-1 overflow-hidden">
+      {/* Main content — paired rows: each slide = scenario + preview side by side */}
+      <div className="flex-1 overflow-y-auto">
         {slides.length > 0 ? (
-          <div className="flex h-full">
-            {/* Left column: Scenario list */}
-            <div className="flex w-[45%] flex-col border-r" style={{ borderColor: 'var(--border)' }}>
-              <div className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-                <FileText size={13} style={{ color: 'var(--accent)' }} />
-                <span className="text-[11px] font-semibold" style={{ color: 'var(--foreground)' }}>シナリオ</span>
+          <div>
+            {/* Intro */}
+            {story?.intro && (
+              <div className="prose prose-sm border-b px-4 py-3 text-xs" style={{ borderColor: 'var(--border)' }}>
+                <Markdown remarkPlugins={[remarkGfm]}>{story.intro}</Markdown>
               </div>
-              <div className="flex-1 overflow-y-auto">
-                {story?.intro && (
-                  <div className="prose prose-sm border-b px-3 py-2 text-xs" style={{ borderColor: 'var(--border)' }}>
-                    <Markdown remarkPlugins={[remarkGfm]}>{story.intro}</Markdown>
-                  </div>
-                )}
-                <div className="py-1">
-                  {slides.map((slide) => {
-                    const isActive = selectedSlide === slide.number;
-                    return (
-                      <button
-                        key={slide.id}
-                        onClick={() => setSelectedSlide(isActive ? null : slide.number)}
-                        className="w-full px-3 py-2 text-left transition-all"
-                        style={{
-                          background: isActive ? 'var(--accent-light)' : 'transparent',
-                          borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent',
-                        }}
-                      >
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-[10px] font-bold tabular-nums" style={{ color: 'var(--accent)' }}>
-                            {String(slide.number).padStart(2, '0')}
-                          </span>
-                          <span className="text-xs font-semibold" style={{ color: 'var(--foreground)' }}>
-                            {slide.title}
-                          </span>
-                        </div>
-                        {slide.bullets.length > 0 && (
-                          <div className="mt-0.5 pl-6">
-                            {slide.bullets.slice(0, 3).map((b, i) => (
-                              <p key={i} className="truncate text-[10px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                                • {b}
-                              </p>
-                            ))}
-                            {slide.bullets.length > 3 && (
-                              <p className="text-[9px]" style={{ color: 'var(--text-secondary)', opacity: 0.6 }}>
-                                +{slide.bullets.length - 3} more
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+            )}
+
+            {/* Column headers */}
+            <div className="sticky top-0 z-10 flex border-b px-4 py-1.5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+              <div className="flex w-[45%] items-center gap-1.5">
+                <FileText size={11} style={{ color: 'var(--accent)' }} />
+                <span className="text-[10px] font-semibold" style={{ color: 'var(--text-secondary)' }}>シナリオ</span>
+              </div>
+              <div className="flex w-[55%] items-center gap-1.5">
+                <Presentation size={11} style={{ color: 'var(--accent)' }} />
+                <span className="text-[10px] font-semibold" style={{ color: 'var(--text-secondary)' }}>プレビュー</span>
               </div>
             </div>
 
-            {/* Right column: SVG preview */}
-            <div className="flex w-[55%] flex-col">
-              <div className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-                <Presentation size={13} style={{ color: 'var(--accent)' }} />
-                <span className="text-[11px] font-semibold" style={{ color: 'var(--foreground)' }}>プレビュー</span>
-              </div>
-              <div className="flex-1 overflow-y-auto p-3">
-                {selectedItem ? (
-                  /* Selected slide: large preview + detail */
-                  <div>
-                    <div className="overflow-hidden rounded-xl border shadow-sm" style={{ borderColor: 'var(--accent)' }}>
-                      <SlidePreview slide={selectedItem} isTitle={selectedItem.number === 1} className="w-full" />
+            {/* Slide rows */}
+            {slides.map((slide) => {
+              const isActive = selectedSlide === slide.number;
+              return (
+                <div
+                  key={slide.id}
+                  className="flex cursor-pointer border-b transition-colors"
+                  style={{
+                    borderColor: 'var(--border)',
+                    background: isActive ? 'var(--accent-light)' : 'transparent',
+                  }}
+                  onClick={() => setSelectedSlide(isActive ? null : slide.number)}
+                >
+                  {/* Scenario side */}
+                  <div className="w-[45%] border-r px-3 py-3" style={{ borderColor: 'var(--border)' }}>
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold text-white" style={{ background: 'var(--accent)' }}>
+                        {slide.number}
+                      </span>
+                      <span className="text-xs font-semibold leading-tight" style={{ color: 'var(--foreground)' }}>
+                        {slide.title}
+                      </span>
                     </div>
-                    {/* Detail markdown below preview */}
-                    <div className="mt-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-                      <div className="prose prose-sm max-w-none text-xs">
-                        <Markdown remarkPlugins={[remarkGfm]}>{selectedItem.rawStory}</Markdown>
+                    {slide.bullets.length > 0 && (
+                      <div className="mt-1.5 pl-7">
+                        {slide.bullets.slice(0, isActive ? 6 : 3).map((b, i) => (
+                          <p key={i} className="truncate text-[10px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                            • {b}
+                          </p>
+                        ))}
+                        {!isActive && slide.bullets.length > 3 && (
+                          <p className="text-[9px]" style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>
+                            +{slide.bullets.length - 3}
+                          </p>
+                        )}
                       </div>
-                    </div>
-                  </div>
-                ) : (
-                  /* Thumbnail grid with SVG previews */
-                  <div className="grid grid-cols-2 gap-2">
-                    {slides.map((slide) => (
-                      <button
-                        key={slide.id}
-                        onClick={() => setSelectedSlide(slide.number)}
-                        className="group overflow-hidden rounded-lg border transition-all hover:shadow-md"
-                        style={{ borderColor: 'var(--border)' }}
-                      >
-                        <SlidePreview slide={slide} isTitle={slide.number === 1} className="w-full" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* PPTX ready */}
-                {pptx && (
-                  <div className="mt-4 rounded-xl border p-3" style={{ borderColor: 'var(--accent)', background: 'var(--accent-light)' }}>
-                    <div className="flex items-center gap-3">
-                      <Presentation size={18} style={{ color: 'var(--accent)' }} />
-                      <p className="flex-1 text-xs font-semibold" style={{ color: 'var(--foreground)' }}>プレゼンテーション準備完了</p>
-                    </div>
-                    <button
-                      onClick={() => setShowCode(!showCode)}
-                      className="mt-2 flex items-center gap-1 text-[10px] hover:underline"
-                      style={{ color: 'var(--text-secondary)' }}
-                    >
-                      <Code size={10} />
-                      {showCode ? 'コードを隠す' : 'コードを表示'}
-                    </button>
-                    {showCode && (
-                      <pre className="mt-2 max-h-48 overflow-auto rounded-lg p-2 text-[10px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                        <code>{pptx.code}</code>
-                      </pre>
+                    )}
+                    {/* Expanded detail */}
+                    {isActive && slide.notes && (
+                      <div className="mt-2 rounded-lg border p-2 pl-7 text-[10px]" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+                        <div className="prose prose-sm max-w-none text-[10px]">
+                          <Markdown remarkPlugins={[remarkGfm]}>{slide.notes}</Markdown>
+                        </div>
+                      </div>
                     )}
                   </div>
-                )}
+
+                  {/* Preview side */}
+                  <div className="flex w-[55%] items-start p-3">
+                    <div className={`w-full overflow-hidden rounded-lg border transition-shadow ${isActive ? 'shadow-md' : ''}`}
+                      style={{ borderColor: isActive ? 'var(--accent)' : 'var(--border)' }}
+                    >
+                      <SlidePreview slide={slide} isTitle={slide.number === 1} className="w-full" />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* PPTX ready */}
+            {pptx && (
+              <div className="border-b p-4" style={{ borderColor: 'var(--border)' }}>
+                <div className="rounded-xl border p-3" style={{ borderColor: 'var(--accent)', background: 'var(--accent-light)' }}>
+                  <div className="flex items-center gap-3">
+                    <Presentation size={18} style={{ color: 'var(--accent)' }} />
+                    <p className="flex-1 text-xs font-semibold" style={{ color: 'var(--foreground)' }}>プレゼンテーション準備完了</p>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowCode(!showCode); }}
+                    className="mt-2 flex items-center gap-1 text-[10px] hover:underline"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    <Code size={10} />
+                    {showCode ? 'コードを隠す' : 'コードを表示'}
+                  </button>
+                  {showCode && (
+                    <pre className="mt-2 max-h-48 overflow-auto rounded-lg p-2 text-[10px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                      <code>{pptx.code}</code>
+                    </pre>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         ) : (
           /* No slides yet */
