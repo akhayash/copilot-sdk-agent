@@ -6,7 +6,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Layers, Presentation, Download, Check, Code, MessageSquare, Layout } from 'lucide-react';
+import { Layers, Presentation, Download, Check, Code, MessageSquare, Layout, Sparkles } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { SlideWork } from '@/domain/entities/slide-work';
@@ -19,9 +19,10 @@ const LAYOUT_LABELS: Record<string, string> = {
 
 interface SlidePanelProps {
   slideWork: SlideWork;
+  onRequestGenerate?: () => void;
 }
 
-export function SlidePanel({ slideWork }: SlidePanelProps) {
+export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
   const { phase, slides, story, pptx, isStreaming } = slideWork;
   const [showCode, setShowCode] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -84,7 +85,7 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
               </div>
             </div>
           ))}
-          <p className="py-4 text-center text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+          <p className="py-4 text-center text-xs" style={{ color: 'var(--text-secondary)' }}>
             チャットでプレゼンを依頼すると、スライドシナリオが表示されます
           </p>
         </div>
@@ -102,12 +103,23 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
             {pptx ? pptx.title : slides.length > 0 ? 'シナリオ' : 'ワークスペース'}
           </span>
           {slides.length > 0 && (
-            <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
+            <span className="rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
               {slides.length}枚
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
+          {slides.length > 0 && !pptx && onRequestGenerate && (
+            <button
+              onClick={onRequestGenerate}
+              disabled={isStreaming}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-all hover:opacity-90 hover:shadow-md disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, var(--accent), #5C2D91)' }}
+            >
+              <Sparkles size={13} />
+              PPTX を生成
+            </button>
+          )}
           {pptx && (
             <button
               onClick={handleDownload}
@@ -145,33 +157,33 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
           {slides.map((slide) => (
               <div
                 key={slide.id}
-                className="mb-2 rounded-lg border"
+                className="mb-3 rounded-lg border"
                 style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
               >
                 {/* Slide header */}
-                <div className="flex items-start gap-2.5 px-3 py-2.5">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white" style={{ background: 'var(--accent)' }}>
+                <div className="flex items-start gap-3 px-4 py-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white" style={{ background: 'var(--accent)' }}>
                     {slide.number}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
-                      <span className="text-xs font-semibold leading-snug" style={{ color: 'var(--foreground)' }}>
+                      <span className="text-sm font-bold leading-snug" style={{ color: 'var(--foreground)' }}>
                         {slide.title}
                       </span>
-                      <div className="flex shrink-0 items-center gap-1.5">
+                      <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
                         {slide.icon && (
-                          <span className="rounded px-1 py-0.5 text-[8px]" style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}>
+                          <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}>
                             🎨 {slide.icon}
                           </span>
                         )}
-                        <span className="rounded px-1.5 py-0.5 text-[8px] font-medium" style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}>
-                          <Layout size={8} className="mr-0.5 inline" />
+                        <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}>
+                          <Layout size={10} className="mr-0.5 inline" />
                           {LAYOUT_LABELS[slide.layout] || slide.layout}
                         </span>
                       </div>
                     </div>
                     {slide.keyMessage && (
-                      <p className="mt-1 text-[10px] font-medium italic leading-snug" style={{ color: 'var(--accent)' }}>
+                      <p className="mt-1.5 text-xs font-medium leading-snug" style={{ color: 'var(--accent)' }}>
                         💡 {slide.keyMessage}
                       </p>
                     )}
@@ -179,27 +191,25 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
                 </div>
 
                 {/* Content — always fully visible */}
-                <div className="border-t px-3 pb-2.5 pt-2" style={{ borderColor: 'var(--border)' }}>
+                <div className="border-t px-4 pb-3 pt-2.5" style={{ borderColor: 'var(--border)' }}>
                   {slide.bullets.length > 0 && (
-                    <div className="pl-8">
+                    <div className="space-y-1 pl-10">
                       {slide.bullets.map((b, i) => (
-                        <p key={i} className="text-[10px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                          <span style={{ color: 'var(--accent)', marginRight: 4 }}>•</span>{b}
+                        <p key={i} className="text-[13px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                          <span style={{ color: 'var(--accent)', marginRight: 6 }}>•</span>{b}
                         </p>
                       ))}
                     </div>
                   )}
-                  {slide.notes && (
-                    <div className="mt-2 rounded-lg border p-2.5 pl-8 text-[10px]" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
-                      <div className="mb-1 flex items-center gap-1">
-                        <MessageSquare size={9} style={{ color: 'var(--text-secondary)' }} />
-                        <span className="text-[9px] font-semibold" style={{ color: 'var(--text-secondary)' }}>スピーカーノート</span>
-                      </div>
-                      <div className="prose prose-sm max-w-none text-[10px]">
-                        <Markdown remarkPlugins={[remarkGfm]}>{slide.notes}</Markdown>
-                      </div>
+                  <div className="mt-3 rounded-lg border p-3 pl-10" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
+                    <div className="mb-1.5 flex items-center gap-1.5">
+                      <MessageSquare size={12} style={{ color: 'var(--text-secondary)' }} />
+                      <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>スピーカーノート</span>
                     </div>
-                  )}
+                    <div className="prose prose-sm max-w-none text-xs leading-relaxed">
+                      <Markdown remarkPlugins={[remarkGfm]}>{slide.notes || '—'}</Markdown>
+                    </div>
+                  </div>
                 </div>
               </div>
           ))}
@@ -214,10 +224,10 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); setShowCode(!showCode); }}
-                className="mt-2 flex items-center gap-1 text-[10px] hover:underline"
+                className="mt-2 flex items-center gap-1.5 text-xs hover:underline"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                <Code size={10} />
+                <Code size={12} />
                 {showCode ? 'コードを隠す' : 'コードを表示'}
               </button>
               {showCode && (

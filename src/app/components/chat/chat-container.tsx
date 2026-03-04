@@ -245,7 +245,14 @@ export function ChatContainer() {
         {/* Slide panel — takes remaining space */}
         {panelOpen && (
           <div className="flex-1" style={{ background: 'var(--background)' }}>
-            <SlidePanel slideWork={slideWork} />
+            <SlidePanel
+              slideWork={slideWork}
+              onRequestGenerate={() => {
+                if (!isLoading) {
+                  handleSendMessage('このシナリオの内容でPPTXを生成してください。');
+                }
+              }}
+            />
           </div>
         )}
       </div>

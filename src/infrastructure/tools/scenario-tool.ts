@@ -12,7 +12,7 @@ export interface ScenarioSlide {
   keyMessage: string;
   layout: string;
   bullets: string[];
-  notes?: string;
+  notes: string;
   icon?: string;
 }
 
@@ -61,14 +61,14 @@ export function createScenarioTool(
               },
               notes: {
                 type: 'string',
-                description: 'Speaker notes with detailed context',
+                description: 'Speaker notes — REQUIRED for every slide. Include context, talking points, and references.',
               },
               icon: {
                 type: 'string',
                 description: 'Icon name from available set (e.g. brain, cloud, rocket)',
               },
             },
-            required: ['number', 'title', 'keyMessage', 'layout', 'bullets'],
+            required: ['number', 'title', 'keyMessage', 'layout', 'bullets', 'notes'],
           },
         },
       },
@@ -103,10 +103,10 @@ export function createUpdateSlideTool(
         keyMessage: { type: 'string', description: 'Updated key takeaway' },
         layout: { type: 'string', description: 'Layout type' },
         bullets: { type: 'array', items: { type: 'string' }, description: 'Updated content items' },
-        notes: { type: 'string', description: 'Updated speaker notes' },
+        notes: { type: 'string', description: 'Speaker notes — required for every slide' },
         icon: { type: 'string', description: 'Updated icon name' },
       },
-      required: ['number', 'title', 'keyMessage', 'layout', 'bullets'],
+      required: ['number', 'title', 'keyMessage', 'layout', 'bullets', 'notes'],
     },
     handler: async (args: ScenarioSlide) => {
       onSlideUpdate(args);
