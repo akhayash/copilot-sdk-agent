@@ -2,13 +2,15 @@
 
 ## Overview
 
-Copilot SDK を使用したエージェントアプリケーション。  
-**Next.js (App Router)** によるフルスタック構成で、チャットUIからの指示でPowerPointを生成するデモ。
+Copilot SDK を使用したエージェントアプリケーション。
+**Next.js (App Router)** によるフルスタック構成で、チャットUIからの指示でPowerPointを生成する。
+2ペインワークスペース（チャット + シナリオパネル）で、AIがツール呼び出しを通じてスライド構成を直接パネルに送り、McKinsey式ストーリーテリングに基づくプレゼンテーションを生成する。
 
-- **フレームワーク**: Next.js 15 (App Router, Server Components)
-- **UI**: React 19 + shadcn/ui + Tailwind CSS v4
-- **AI**: `@github/copilot-sdk`
-- **PPTX生成**: `pptxgenjs`
+- **フレームワーク**: Next.js 16 (App Router, Server Components)
+- **UI**: React 19 + lucide-react + Tailwind CSS v4
+- **AI**: `@github/copilot-sdk` (SSE streaming, tool calling, SKILL.md)
+- **PPTX生成**: `pptxgenjs` (AI生成コード実行方式)
+- **アイコン**: `@fluentui/svg-icons` (カラー版 → PNG変換)
 - **言語**: TypeScript (ESM)
 - **パッケージマネージャ**: pnpm
 
@@ -17,38 +19,48 @@ Copilot SDK を使用したエージェントアプリケーション。
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Presentation Layer (Next.js App Router)                    │
-│  ┌───────────────────┐  ┌────────────────────────────────┐  │
-│  │  Chat UI          │  │  API Routes                    │  │
-│  │  shadcn/ui +      │→ │  /api/chat      (SSE stream)   │  │
-│  │  Tailwind CSS     │  │  /api/skills/pptx (download)   │  │
-│  │  File Attach      │  │  /api/health                   │  │
-│  └───────────────────┘  └──────────┬─────────────────────┘  │
-│                                    │                        │
-├────────────────────────────────────┼────────────────────────┤
-│  Application Layer                 │                        │
-│  ┌─────────────────┐  ┌───────────┴──────────┐             │
-│  │  ChatUseCase     │  │  SkillRegistry       │             │
-│  │  - send message  │  │  - register(skill)   │             │
-│  │  - attach files  │  │  - execute(name, in) │             │
-│  └────────┬────────┘  └───────────┬──────────┘             │
-│           │                       │                        │
-├───────────┼───────────────────────┼────────────────────────┤
-│  Domain Layer                     │                        │
-│  ┌────────┴────────┐  ┌──────────┴──────────┐             │
-│  │  Entities        │  │  Ports (Interfaces)  │             │
-│  │  - Message       │  │  - AIService         │             │
-│  │  - Attachment    │  │  - Skill<TIn, TOut>  │             │
-│  │  - Presentation  │  │  - PptxSkill         │             │
-│  │  - Slide         │  │                      │             │
-│  └─────────────────┘  └──────────┬──────────┘             │
-│                                   │                        │
-├───────────────────────────────────┼────────────────────────┤
-│  Infrastructure Layer             │                        │
-│  ┌─────────────────┐  ┌──────────┴──────────┐             │
-│  │  CopilotClient   │  │  PptxgenAdapter      │             │
-│  │  (singleton)     │  │  (pptxgenjs)         │             │
-│  └─────────────────┘  └─────────────────────┘             │
-└─────────────────────────────────────────────────────────────┘
+│  ┌──────────────────────┐  ┌─────────────────────────────┐  │
+│  │  2-Pane Workspace    │  │  API Routes                 │  │
+│  │  ┌────────┬────────┐ │  │  /api/chat     (SSE stream) │  │
+│  │  │ Chat   │Scenario│ │→ │  /api/skills/pptx (PPTX DL) │  │
+│  │  │ Pane   │ Panel  │ │  │  /api/skills/pptx/slide     │  │
+│  │  └────────┴────────┘ │  │  /api/health                │  │
+│  └──────────────────────┘  └────────────┬────────────────┘  │
+│                                         │                   │
+├─────────────────────────────────────────┼───────────────────┤
+│  Application Layer                      │                   │
+│  ┌─────────────────┐  ┌────────────────┴────────┐          │
+│  │  ChatUseCase     │  │  SlideParser (fallback) │          │
+│  │  - buildPrompt   │  │  - parseStoryToSlides   │          │
+│  └────────┬────────┘  └─────────────────────────┘          │
+│           │                                                 │
+├───────────┼─────────────────────────────────────────────────┤
+│  Domain Layer                                               │
+│  ┌────────┴──────────┐  ┌─────────────────────────────┐    │
+│  │  Entities          │  │  Ports (Interfaces)          │    │
+│  │  - Message         │  │  - Skill<TIn, TOut>          │    │
+│  │  - Attachment      │  │  - PptxSkill                 │    │
+│  │  - SlideWork       │  │                              │    │
+│  │  - SlideItem       │  │                              │    │
+│  │  - SlideLayout     │  │                              │    │
+│  └───────────────────┘  └──────────────────────────────┘    │
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│  Infrastructure Layer                                        │
+│  ┌─────────────────┐  ┌──────────────┐  ┌───────────────┐  │
+│  │  CopilotClient   │  │  Tools        │  │  Adapters      │  │
+│  │  (singleton)     │  │  - scenario   │  │  - pptxgen     │  │
+│  │                  │  │  - update     │  │                │  │
+│  │                  │  │  - web_search │  │                │  │
+│  └─────────────────┘  └──────────────┘  └───────────────┘  │
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│  Skills (SKILL.md)                                           │
+│  ┌─────────────────────────┐  ┌──────────────────────────┐  │
+│  │  create-slide-story     │  │  generate-pptx            │  │
+│  │  McKinsey式シナリオ設計  │  │  pptxgenjs コード生成     │  │
+│  └─────────────────────────┘  └──────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ## Directory Structure
@@ -56,156 +68,137 @@ Copilot SDK を使用したエージェントアプリケーション。
 ```
 copilot-sdk-agent/
 ├── src/
-│   ├── domain/                    # Domain Layer — 型定義 & ポート
+│   ├── domain/                        # Domain Layer — 型定義 & ポート
 │   │   ├── entities/
-│   │   │   ├── message.ts         # Message, Attachment 型
-│   │   │   └── presentation.ts   # Slide, Presentation 型
+│   │   │   ├── message.ts             # Message, Attachment 型
+│   │   │   ├── presentation.ts        # Slide, Presentation 型
+│   │   │   └── slide-work.ts          # SlideWork, SlideItem, SlideLayout 型
 │   │   └── ports/
 │   │       └── skills/
-│   │           ├── skill.ts       # Skill<TInput, TOutput> 共通インターフェース
-│   │           └── pptx-skill.ts  # PptxSkill ポート定義
+│   │           ├── skill.ts           # Skill<TInput, TOutput> 共通インターフェース
+│   │           └── pptx-skill.ts      # PptxSkill ポート定義
 │   │
-│   ├── application/               # Application Layer — ユースケース
-│   │   ├── chat-use-case.ts      # チャット会話オーケストレーション
+│   ├── application/                   # Application Layer — ユースケース
+│   │   ├── chat-use-case.ts           # チャットプロンプト構築
+│   │   ├── slide-parser.ts            # マークダウン → SlideItem[] パーサー
 │   │   └── skills/
-│   │       ├── skill-registry.ts  # スキル登録 & 実行
-│   │       └── generate-pptx-use-case.ts  # PPTX生成ユースケース
+│   │       ├── skill-registry.ts      # スキル登録 & 実行
+│   │       └── generate-pptx-use-case.ts
 │   │
-│   ├── infrastructure/            # Infrastructure Layer — 外部サービス実装
+│   ├── infrastructure/                # Infrastructure Layer — 外部サービス実装
 │   │   ├── copilot/
-│   │   │   └── client.ts         # CopilotClient シングルトン
+│   │   │   └── client.ts             # CopilotClient シングルトン
+│   │   ├── tools/
+│   │   │   ├── scenario-tool.ts       # set_scenario / update_slide ツール
+│   │   │   └── web-search-tool.ts     # Tavily Web検索ツール
 │   │   └── skills/
-│   │       └── pptxgen-adapter.ts # pptxgenjs による Skill 実装
+│   │       └── pptxgen-adapter.ts     # pptxgenjs による Skill 実装
 │   │
-│   └── app/                       # Presentation Layer — Next.js App Router
-│       ├── layout.tsx
-│       ├── page.tsx               # メインページ (チャットUI)
-│       ├── globals.css
+│   └── app/                           # Presentation Layer — Next.js App Router
+│       ├── layout.tsx                 # Inter + Noto Sans JP フォント
+│       ├── page.tsx
+│       ├── globals.css                # CSS変数、prose スタイル、アニメーション
 │       ├── api/
-│       │   ├── chat/route.ts      # POST — SSE ストリーミングチャット
-│       │   ├── skills/
-│       │   │   └── pptx/route.ts  # POST — PPTX 生成 & バイナリ返却
-│       │   └── health/route.ts    # GET — ヘルスチェック
+│       │   ├── chat/route.ts          # POST — SSE ストリーミング + ツール呼び出し
+│       │   ├── health/route.ts        # GET — ヘルスチェック
+│       │   └── skills/pptx/
+│       │       ├── route.ts           # POST — PPTX コード実行 & バイナリ返却
+│       │       └── slide/route.ts     # POST — 単一スライド PPTX 生成
 │       └── components/
-│           ├── ui/                # shadcn/ui コンポーネント
 │           ├── chat/
-│           │   ├── chat-container.tsx    # 全体レイアウト
-│           │   ├── message-list.tsx      # メッセージ一覧
-│           │   ├── message-bubble.tsx    # 個別メッセージ
-│           │   ├── message-input.tsx     # テキスト入力 + 添付ボタン
-│           │   └── attachment-preview.tsx # 添付ファイルプレビュー
+│           │   ├── chat-container.tsx  # 2ペインレイアウト + SSEイベント処理
+│           │   ├── message-list.tsx    # メッセージ一覧
+│           │   ├── message-bubble.tsx  # メッセージ表示 + Thinking
+│           │   ├── message-input.tsx   # テキスト入力 + D&Dファイル添付
+│           │   ├── model-selector.tsx  # モデル選択ドロップダウン
+│           │   └── attachment-preview.tsx
+│           ├── slides/
+│           │   ├── slide-panel.tsx     # シナリオパネル（右ペイン）
+│           │   └── slide-preview.tsx   # SVGプレビュー（未使用・参考実装）
 │           └── skills/
-│               └── pptx-download-card.tsx # ダウンロードカード
+│               ├── pptx-download-card.tsx
+│               └── slide-story-view.tsx
+├── skills/
+│   ├── create-slide-story/SKILL.md    # スライドストーリー作成スキル
+│   └── generate-pptx/SKILL.md         # PPTX 生成スキル
+├── scripts/
+│   └── setup-icons.mjs                # Fluent UI アイコン → PNG 変換
 ├── public/
-├── AGENTS.md
-├── ARCHITECTURE.md
-├── next.config.ts
-├── tailwind.config.ts
-├── tsconfig.json
+│   └── icons/                         # 24種のカラーアイコン PNG
+├── .vscode/mcp.json                   # MCP サーバー設定
 └── package.json
 ```
 
-## Layer Responsibilities
-
-### Domain Layer (`src/domain/`)
-
-フレームワーク非依存。ビジネスエンティティとポート（インターフェース）のみ。
-
-- **Entities**: `Message`, `Attachment`, `Slide`, `Presentation` の型定義
-- **Ports**: 外部サービスへの依存を抽象化するインターフェース
-  - `Skill<TInput, TOutput>` — スキル共通インターフェース
-  - `PptxSkill` — PPTX 生成固有のポート
-
-### Application Layer (`src/application/`)
-
-ユースケース。ドメインのポートを通じてインフラ層を呼び出す。
-
-- **ChatUseCase** — メッセージ送信、添付ファイル処理、AIとの対話
-- **SkillRegistry** — スキルの登録・発見・実行
-- **GeneratePptxUseCase** — AI応答からスライド構造を抽出し、PPTX生成を実行
-
-### Infrastructure Layer (`src/infrastructure/`)
-
-ポートの具体的な実装。外部ライブラリへの依存はここに閉じ込める。
-
-- **CopilotClient** — `@github/copilot-sdk` のシングルトン管理
-- **PptxgenAdapter** — `pptxgenjs` によるPPTX生成実装
-
-### Presentation Layer (`src/app/`)
-
-Next.js App Router による UI と API。
-
-- **API Routes** — Server-side SSE ストリーミング、PPTX生成エンドポイント
-- **Components** — shadcn/ui ベースのチャットUI、ファイル添付、ダウンロードカード
-
 ## Data Flow
 
-### 1. チャット会話
+### 1. シナリオ作成（set_scenario ツール）
 
 ```
-User Input → MessageInput → POST /api/chat (SSE)
-  → ChatUseCase → CopilotClient.createSession()
-  → session.send() → assistant.message_delta events
-  → SSE stream → UI に逐次表示
+User: 「Azureについてプレゼン作って」
+  → POST /api/chat (SSE stream)
+  → CopilotClient.createSession({ tools: [set_scenario, update_slide, web_search] })
+  → AI が web_search() で情報収集
+  → AI が set_scenario({ title, slides }) をツール呼び出し
+  → ツールハンドラが SSE data: {"scenario": {...}} を発火
+  → クライアントが scenario イベントを受信 → 右パネルに即反映
+  → AI がチャットに「構成を作成しました。確認してください。」と応答
 ```
 
-### 2. PPTX 生成
+### 2. 個別スライド更新（update_slide ツール）
 
 ```
-User: 「5枚のプレゼン作って」
-  → POST /api/chat → AI がスライド構成 JSON を生成
-  → UI がスライド構成を検出
-  → POST /api/skills/pptx (JSON payload)
-  → GeneratePptxUseCase → PptxgenAdapter.execute()
-  → pptxgenjs でメモリ上に PPTX 生成
-  → Content-Disposition: attachment でバイナリ返却
-  → ブラウザが Blob としてダウンロード
-  → UI にダウンロードカード表示
+User: 「P.5のタイトルを変更して」
+  → AI が update_slide({ number: 5, ... }) をツール呼び出し
+  → SSE data: {"slide_update": {...}} を発火
+  → クライアントが slide_update を受信 → 該当スライドのみマージ更新
 ```
 
-### 3. ファイル添付
+### 3. PPTX 生成 & ダウンロード
 
 ```
-User: ファイル選択 or ドラッグ & ドロップ
-  → MessageInput → FileReader でテキスト読み取り
-  → POST /api/chat (message + attachments)
-  → ChatUseCase: 添付内容をプロンプトに組み込み
-  → AI がファイル内容を考慮して応答
+User: 「PPTX を生成」ボタン or チャットで指示
+  → AI が pptxgenjs コードを ```javascript``` ブロックで出力
+  → クライアントがコードブロックを検出 → slideWork.pptx にセット
+  → ユーザーがダウンロードボタンをクリック
+  → POST /api/skills/pptx { code, title }
+  → サーバーが new Function() でコード実行（pres, C, F 等のスコープ提供）
+  → pptxgenjs でメモリ上に PPTX 生成 → バイナリ返却
 ```
 
-## Skill System
+### 4. SSE イベント一覧
 
-スキルは共通インターフェースに従い、レジストリで管理される。
+| SSE データ | 発生源 | クライアント処理 |
+|-----------|--------|-----------------|
+| `{"content": "..."}` | `assistant.message_delta` | チャットに逐次表示 |
+| `{"thinking": "..."}` | `assistant.reasoning_delta` | Thinking表示（スクロール可能） |
+| `{"scenario": {...}}` | `set_scenario` ツール | 右パネルにシナリオ反映 |
+| `{"slide_update": {...}}` | `update_slide` ツール | 該当スライドのみ更新 |
+| `{"error": "..."}` | エラー時 | エラー表示 |
+| `: keepalive` | 30秒ごと | 無視（idle timeout防止） |
+| `[DONE]` | 完了時 | ストリーム終了 |
 
-```typescript
-// 共通インターフェース
-interface Skill<TInput, TOutput> {
-  readonly name: string;
-  readonly description: string;
-  execute(input: TInput): Promise<TOutput>;
-}
+## API Routes
 
-// レジストリ
-class SkillRegistry {
-  register(skill: Skill<unknown, unknown>): void;
-  get(name: string): Skill | undefined;
-  list(): { name: string; description: string }[];
-}
-```
+### POST `/api/chat`
+SSE ストリーミングチャット。ツール呼び出し（set_scenario, update_slide, web_search）を含む。
+- Request: `{ message, history?, model? }`
+- Response: SSE stream（上記イベント一覧参照）
+- Timeout: 600秒 + 30秒keepalive
 
-### 拡張方法
+### POST `/api/skills/pptx`
+AI生成の pptxgenjs コードを実行し、PPTX バイナリを返却。
+- Request: `{ code, title? }`
+- Response: `application/vnd.openxmlformats-officedocument.presentationml.presentation`
 
-新しいスキルを追加する場合：
+### POST `/api/skills/pptx/slide`
+単一スライドの PPTX 生成 + PNG プレビュー。
+- Request: `{ code, slideNumber, title }`
+- Response: `{ slideNumber, pptx: base64, preview: base64png }`
 
-1. `domain/ports/skills/` にポートを定義
-2. `infrastructure/skills/` に実装を追加
-3. `application/skills/` にユースケースを追加
-4. `app/api/skills/` にAPIルートを追加
-5. レジストリに登録
+### GET `/api/health`
+ヘルスチェック。
 
 ## Model Configuration
-
-copilot-sdk-app と同じ3パス構成：
 
 | Path | 環境変数 | 効果 |
 |------|---------|------|
@@ -213,8 +206,12 @@ copilot-sdk-app と同じ3パス構成：
 | GitHub specific | `MODEL_NAME` | 指定モデル |
 | Azure BYOM | `MODEL_PROVIDER=azure` + `AZURE_OPENAI_ENDPOINT` + `MODEL_NAME` | Azure OpenAI |
 
+UIモデルセレクター: Claude Opus 4.6, Claude Sonnet 4.6, GPT-4.1, GPT-4o, o3-mini
+
 ## Environment
 
 - Node.js ≥ 24
 - pnpm
 - `GITHUB_TOKEN` — Copilot SDK 認証用
+- `TAVILY_API_KEY` — Web検索ツール（任意）
+- `MODEL_NAME` — モデル指定（任意）
