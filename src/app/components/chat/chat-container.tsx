@@ -116,7 +116,7 @@ export function ChatContainer() {
                     phase: 'story',
                     story: { intro: '', storyContent: '' },
                     slides: slideItems,
-                    pptx: prev.pptx ? { ...prev.pptx, title } : null,
+                    pptx: null,
                   }));
                   if (!panelOpen) setPanelOpen(true);
                   updated = true;
@@ -136,12 +136,15 @@ export function ChatContainer() {
                     code: null,
                     accent: ACCENT_CYCLE[(s.number - 1) % ACCENT_CYCLE.length],
                   };
-                  setSlideWork((prev) => ({
-                    ...prev,
-                    slides: prev.slides.map((existing) =>
-                      existing.number === updatedSlide.number ? updatedSlide : existing
-                    ),
-                  }));
+                  setSlideWork((prev) => {
+                    const exists = prev.slides.some((e) => e.number === updatedSlide.number);
+                    return {
+                      ...prev,
+                      slides: exists
+                        ? prev.slides.map((e) => e.number === updatedSlide.number ? updatedSlide : e)
+                        : [...prev.slides, updatedSlide].sort((a, b) => a.number - b.number),
+                    };
+                  });
                   updated = true;
                 }
               } catch (e) {
