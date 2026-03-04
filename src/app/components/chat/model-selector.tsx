@@ -13,7 +13,7 @@ export interface ModelOption {
 }
 
 export const AVAILABLE_MODELS: ModelOption[] = [
-  { id: 'claude-opus-4.6', label: 'Claude Opus 4.6', badge: 'Premium' },
+  { id: 'claude-opus-4.6', label: 'Claude Opus 4.6' },
   { id: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
   { id: 'gpt-4.1', label: 'GPT-4.1' },
   { id: 'gpt-4o', label: 'GPT-4o' },

@@ -5,7 +5,8 @@
 
 import type { SlideItem } from '@/domain/entities/slide-work';
 
-const SLIDE_HEADING = /(?:^|\n)#{0,4}\s*スライド\s*(\d+)\s*[:：]\s*(.+)/g;
+const SLIDE_HEADING = /(?:^|\n)#{0,4}\s*(?:スライド|[Ss]lide)\s*(\d+)\s*[:：]\s*(.+)/g;
+const NUMBERED_HEADING = /(?:^|\n)#{1,4}\s*(\d+)\.\s+(.+)/g;
 const BULLET_LINE = /^\s*[-*•🔹🔸▸]\s+(.+)/;
 const ACCENT_CYCLE: SlideItem['accent'][] = ['blue', 'green', 'purple', 'teal', 'orange'];
 
@@ -16,8 +17,9 @@ const ACCENT_CYCLE: SlideItem['accent'][] = ['blue', 'green', 'purple', 'teal', 
 export function parseStoryToSlides(storyContent: string): SlideItem[] {
   const positions: { number: number; title: string; start: number; headEnd: number }[] = [];
   let match: RegExpExecArray | null;
-  const re = new RegExp(SLIDE_HEADING.source, 'g');
 
+  // Try primary pattern: "スライド N:" or "Slide N:"
+  const re = new RegExp(SLIDE_HEADING.source, 'g');
   while ((match = re.exec(storyContent)) !== null) {
     positions.push({
       number: parseInt(match[1]),
@@ -25,6 +27,20 @@ export function parseStoryToSlides(storyContent: string): SlideItem[] {
       start: match.index,
       headEnd: match.index + match[0].length,
     });
+  }
+
+  // Fallback: numbered heading pattern "## 1. タイトル"
+  if (positions.length < 2) {
+    positions.length = 0;
+    const re2 = new RegExp(NUMBERED_HEADING.source, 'g');
+    while ((match = re2.exec(storyContent)) !== null) {
+      positions.push({
+        number: parseInt(match[1]),
+        title: match[2].trim(),
+        start: match.index,
+        headEnd: match.index + match[0].length,
+      });
+    }
   }
 
   return positions.map((pos, i) => {
@@ -63,15 +79,27 @@ export function parseStoryToSlides(storyContent: string): SlideItem[] {
   });
 }
 
-/** Check if content contains slide story pattern (3+ slides) */
+/** Check if content contains slide story pattern (2+ slides) */
 export function isSlideStory(content: string): boolean {
-  const count = (content.match(/スライド\s*\d+\s*[:：]/g) || []).length;
-  return count >= 3;
+  // Match various slide heading patterns
+  const jaCount = (content.match(/スライド\s*\d+\s*[:：]/g) || []).length;
+  if (jaCount >= 2) return true;
+  // Also match "Slide N:" or markdown headings with slide numbers
+  const enCount = (content.match(/[Ss]lide\s*\d+\s*[:：]/g) || []).length;
+  if (enCount >= 2) return true;
+  // Match numbered heading pattern like "## 1. タイトル" with 3+ occurrences
+  const numberedCount = (content.match(/^#{1,4}\s*\d+\.\s+/gm) || []).length;
+  if (numberedCount >= 3) return true;
+  return false;
 }
 
 /** Split content into intro (before first slide) and story body */
 export function splitStoryContent(content: string): { intro: string; storyContent: string } {
-  const first = content.search(/#{0,4}\s*スライド\s*1\s*[:：]/);
+  // Try multiple patterns for the first slide
+  let first = content.search(/#{0,4}\s*(?:スライド|[Ss]lide)\s*1\s*[:：]/);
+  if (first <= 0) {
+    first = content.search(/^#{1,4}\s*1\.\s+/m);
+  }
   if (first <= 0) return { intro: '', storyContent: content };
   return {
     intro: content.slice(0, first).trim(),

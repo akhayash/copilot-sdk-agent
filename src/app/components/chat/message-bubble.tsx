@@ -94,9 +94,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               <Loader2 size={10} className="animate-spin" style={{ color: 'var(--text-secondary)' }} />
               <span className="text-[10px] font-medium" style={{ color: 'var(--text-secondary)' }}>Thinking</span>
             </div>
-            <p className="line-clamp-4 whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-              {thinking.slice(-300)}
-            </p>
+            <div className="max-h-32 overflow-y-auto whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              {thinking}
+            </div>
           </div>
         )}
         <div className="rounded-2xl rounded-tl-sm px-4 py-3" style={{ background: 'var(--surface)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
