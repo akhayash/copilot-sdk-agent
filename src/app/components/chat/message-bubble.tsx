@@ -1,6 +1,7 @@
 /**
  * UI Component: Message Bubble
- * Chat-only view — slide content and thinking appear in the right panel.
+ * Chat-only view — slide content appears in the right panel.
+ * Thinking shown inline for the latest streaming message.
  */
 
 'use client';
@@ -8,7 +9,7 @@
 import React, { useMemo } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Star, AlertTriangle, Paperclip, ArrowRight } from 'lucide-react';
+import { Star, AlertTriangle, Paperclip, ArrowRight, Loader2 } from 'lucide-react';
 import type { Message } from '@/domain/entities/message';
 import { isSlideStory } from '@/application/slide-parser';
 
@@ -20,21 +21,16 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const isError = message.role === 'error';
   const isStreaming = message.metadata?.streaming === true;
+  const thinking = message.metadata?.thinking as string | undefined;
 
-  // Clean content: strip pptxgenjs code and slide story (shown in panel)
   const displayContent = useMemo(() => {
     if (message.role !== 'assistant') return message.content;
     let content = message.content;
-    // Strip pptxgenjs code blocks
     content = content.replace(/```(?:javascript|js)\s*[\s\S]*?\s*```/, '').trim();
-    // If it's a slide story, show redirect to panel
-    if (isSlideStory(content)) {
-      return null; // Fully handled in slide panel
-    }
+    if (isSlideStory(content)) return null;
     return content;
   }, [message.role, message.content]);
 
-  // For slide story messages, show a compact redirect
   const isSlideRedirect = message.role === 'assistant' && displayContent === null;
 
   if (isError) {
@@ -91,8 +87,18 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
         <Star size={14} fill="currentColor" />
       </div>
-
       <div className="min-w-0 max-w-[85%] flex-1">
+        {thinking && isStreaming && (
+          <div className="mb-2 rounded-xl border px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}>
+            <div className="mb-1 flex items-center gap-1.5">
+              <Loader2 size={10} className="animate-spin" style={{ color: 'var(--text-secondary)' }} />
+              <span className="text-[10px] font-medium" style={{ color: 'var(--text-secondary)' }}>Thinking</span>
+            </div>
+            <p className="line-clamp-4 whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              {thinking.slice(-300)}
+            </p>
+          </div>
+        )}
         <div className="rounded-2xl rounded-tl-sm px-4 py-3" style={{ background: 'var(--surface)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
           {displayContent ? (
             <div className={`prose prose-sm max-w-none ${isStreaming ? 'typing-cursor' : ''}`}>
