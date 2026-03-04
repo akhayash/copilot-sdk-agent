@@ -87,7 +87,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             </div>
           </div>
         )}
-        <div className="rounded-2xl rounded-tl-sm px-4 py-3" style={{ background: 'var(--surface)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+        <div className="overflow-hidden rounded-2xl rounded-tl-sm px-4 py-3" style={{ background: 'var(--surface)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
           {displayContent ? (
             <div className={`prose prose-sm max-w-none ${isStreaming ? 'typing-cursor' : ''}`}>
               <Markdown remarkPlugins={[remarkGfm]}>{displayContent}</Markdown>

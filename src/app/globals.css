@@ -175,6 +175,12 @@ body {
   font-size: 0.75rem;
   border: 1px solid var(--border);
   background: var(--surface-secondary) !important;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.prose code {
+  word-break: break-all;
 }
 
 .prose code:not(pre code) {
