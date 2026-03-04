@@ -61,7 +61,7 @@ export function createScenarioTool(
               },
               notes: {
                 type: 'string',
-                description: 'Speaker notes — REQUIRED for every slide. Include context, talking points, and references.',
+                description: 'Speaker notes — REQUIRED for EVERY slide, including title and section slides. Write 2-3 sentences of what the presenter should say. Never leave empty or use a dash.',
               },
               icon: {
                 type: 'string',
@@ -103,7 +103,7 @@ export function createUpdateSlideTool(
         keyMessage: { type: 'string', description: 'Updated key takeaway' },
         layout: { type: 'string', description: 'Layout type' },
         bullets: { type: 'array', items: { type: 'string' }, description: 'Updated content items' },
-        notes: { type: 'string', description: 'Speaker notes — required for every slide' },
+        notes: { type: 'string', description: 'Speaker notes — required, 2-3 sentences of what to say' },
         icon: { type: 'string', description: 'Updated icon name' },
       },
       required: ['number', 'title', 'keyMessage', 'layout', 'bullets', 'notes'],

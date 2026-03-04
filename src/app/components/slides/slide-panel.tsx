@@ -207,7 +207,7 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
                       <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>スピーカーノート</span>
                     </div>
                     <div className="prose prose-sm max-w-none text-xs leading-relaxed">
-                      <Markdown remarkPlugins={[remarkGfm]}>{slide.notes || '—'}</Markdown>
+                      <Markdown remarkPlugins={[remarkGfm]}>{slide.notes}</Markdown>
                     </div>
                   </div>
                 </div>
