@@ -5,6 +5,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Presentation, Download, Check } from 'lucide-react';
 
 interface PptxDownloadCardProps {
   title: string;
@@ -14,6 +15,7 @@ interface PptxDownloadCardProps {
 
 export function PptxDownloadCard({ title, code, onError }: PptxDownloadCardProps) {
   const [isGenerating, setIsGenerating] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
 
   const handleDownload = async () => {
     setIsGenerating(true);
@@ -38,6 +40,7 @@ export function PptxDownloadCard({ title, code, onError }: PptxDownloadCardProps
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      setDownloaded(true);
     } catch (error) {
       onError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
@@ -46,24 +49,22 @@ export function PptxDownloadCard({ title, code, onError }: PptxDownloadCardProps
   };
 
   return (
-    <div className="my-4 rounded-lg border-2 border-green-200 bg-green-50 p-4">
-      <div className="mb-3 flex items-start space-x-3">
-        <span className="text-2xl">📊</span>
-        <div>
-          <h4 className="font-semibold text-green-900">Presentation Ready!</h4>
-          <p className="text-sm text-green-700">
-            <em>{title}</em>
-          </p>
+    <div className="rounded-xl border p-4" style={{ borderColor: 'var(--accent)', background: 'var(--accent-light)' }}>
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg text-white" style={{ background: 'var(--accent)' }}>
+          <Presentation size={20} />
         </div>
-      </div>
-
-      <div className="flex gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>プレゼンテーション生成完了</p>
+          <p className="truncate text-xs" style={{ color: 'var(--text-secondary)' }}>{title}</p>
+        </div>
         <button
           onClick={handleDownload}
           disabled={isGenerating}
-          className="rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
+          className="shrink-0 rounded-lg px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          style={{ background: 'var(--accent)' }}
         >
-          {isGenerating ? 'Generating...' : '⬇️ Download PPTX'}
+          {isGenerating ? '生成中...' : downloaded ? <><Check size={14} className="inline mr-1" />再ダウンロード</> : <><Download size={14} className="inline mr-1" />ダウンロード</>}
         </button>
       </div>
     </div>

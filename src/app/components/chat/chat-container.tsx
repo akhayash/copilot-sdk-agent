@@ -6,6 +6,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Star } from 'lucide-react';
 import { MessageList } from './message-list';
 import { MessageInput } from './message-input';
 import { ModelSelector, AVAILABLE_MODELS } from './model-selector';
@@ -17,7 +18,6 @@ export function ChatContainer() {
   const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
 
   const handleSendMessage = async (text: string, attachments?: Attachment[]) => {
-    // Add user message
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -31,7 +31,6 @@ export function ChatContainer() {
     setIsLoading(true);
 
     try {
-      // Build history
       const history = newMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map((m) => ({
@@ -39,7 +38,6 @@ export function ChatContainer() {
           content: m.content,
         }));
 
-      // Send to API
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -54,7 +52,6 @@ export function ChatContainer() {
         throw new Error(`Server error: ${response.status}`);
       }
 
-      // Handle SSE streaming with real-time updates
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let assistantContent = '';
@@ -62,7 +59,6 @@ export function ChatContainer() {
       let buffer = '';
       const assistantId = crypto.randomUUID();
 
-      // Add placeholder assistant message for streaming
       const streamingMessage: Message = {
         id: assistantId,
         role: 'assistant',
@@ -106,7 +102,6 @@ export function ChatContainer() {
             }
           }
 
-          // Update message in-place during streaming
           if (updated) {
             const updatedMessage: Message = {
               id: assistantId,
@@ -123,7 +118,6 @@ export function ChatContainer() {
         }
       }
 
-      // Finalize assistant message
       const assistantMessage: Message = {
         id: assistantId,
         role: 'assistant',
@@ -147,20 +141,28 @@ export function ChatContainer() {
   };
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Copilot SDK Agent</h1>
-          <p className="text-sm text-gray-600">Create presentations with AI</p>
+    <div className="flex h-screen flex-col" style={{ background: 'var(--background)' }}>
+      {/* Header */}
+      <header className="flex items-center justify-between border-b px-6 py-3" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg text-white" style={{ background: 'var(--accent)' }}>
+            <Star size={18} fill="currentColor" />
+          </div>
+          <div>
+            <h1 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>Copilot SDK Agent</h1>
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>AI Presentation Generator</p>
+          </div>
         </div>
         <ModelSelector value={selectedModel} onChange={setSelectedModel} disabled={isLoading} />
       </header>
 
+      {/* Messages */}
       <main className="flex-1 overflow-hidden">
         <MessageList messages={messages} isLoading={isLoading} />
       </main>
 
-      <footer className="border-t border-gray-200 bg-white">
+      {/* Input */}
+      <footer className="border-t" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
         <MessageInput onSend={handleSendMessage} disabled={isLoading} />
       </footer>
     </div>
