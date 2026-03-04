@@ -35,6 +35,7 @@ export function ChatContainer() {
   const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
   const [slideWork, setSlideWork] = useState<SlideWork>({ phase: 'empty', story: null, slides: [], pptx: null, thinking: null, isStreaming: false });
   const [panelOpen, setPanelOpen] = useState(true);
+  const [scenarioTitle, setScenarioTitle] = useState<string>('Presentation');
 
   const handleSendMessage = async (text: string, attachments?: Attachment[]) => {
     const userMessage: Message = {
@@ -97,6 +98,7 @@ export function ChatContainer() {
                 if (parsed.scenario) {
                   // Scenario tool called — populate right panel directly
                   const { title, slides } = parsed.scenario;
+                  setScenarioTitle(title);
                   const slideItems: SlideItem[] = slides.map((s: { number: number; title: string; keyMessage?: string; layout?: string; bullets: string[]; notes?: string; icon?: string }) => ({
                     id: `slide-${s.number}`,
                     number: s.number,
@@ -134,6 +136,8 @@ export function ChatContainer() {
             // Detect PPTX code in chat stream
             const pptx = detectPptxCode(assistantContent);
             if (pptx) {
+              // Use scenario title instead of unreliable code extraction
+              pptx.title = scenarioTitle;
               setSlideWork((prev) => ({ ...prev, phase: 'ready', pptx }));
               if (!panelOpen) setPanelOpen(true);
             }
@@ -163,6 +167,7 @@ export function ChatContainer() {
       // Final PPTX code detection
       const pptx = detectPptxCode(finalContent);
       if (pptx) {
+        pptx.title = scenarioTitle;
         setSlideWork((prev) => ({ ...prev, phase: 'ready', pptx }));
       }
     } catch (error) {
