@@ -1,15 +1,16 @@
 /**
  * UI Component: Message Bubble
- * Chat-only view — slide content appears in the right panel, not here.
+ * Chat-only view — slide content and thinking appear in the right panel.
  */
 
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import Markdown from 'react-markdown';
-import { Star, Loader2, ChevronDown, ChevronRight, AlertTriangle, Paperclip } from 'lucide-react';
+import remarkGfm from 'remark-gfm';
+import { Star, AlertTriangle, Paperclip, ArrowRight } from 'lucide-react';
 import type { Message } from '@/domain/entities/message';
-import { isSlideStory, splitStoryContent } from '@/app/components/skills/slide-story-view';
+import { isSlideStory } from '@/application/slide-parser';
 
 interface MessageBubbleProps {
   message: Message;
@@ -19,9 +20,6 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const isError = message.role === 'error';
   const isStreaming = message.metadata?.streaming === true;
-  const [showThinking, setShowThinking] = useState(false);
-
-  const thinking = message.metadata?.thinking as string | undefined;
 
   // Clean content: strip pptxgenjs code and slide story (shown in panel)
   const displayContent = useMemo(() => {
@@ -29,13 +27,15 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     let content = message.content;
     // Strip pptxgenjs code blocks
     content = content.replace(/```(?:javascript|js)\s*[\s\S]*?\s*```/, '').trim();
-    // If it's a slide story, show only the intro
+    // If it's a slide story, show redirect to panel
     if (isSlideStory(content)) {
-      const { intro } = splitStoryContent(content);
-      return intro || 'スライド構成案を作成しました。右のパネルをご確認ください。';
+      return null; // Fully handled in slide panel
     }
     return content;
   }, [message.role, message.content]);
+
+  // For slide story messages, show a compact redirect
+  const isSlideRedirect = message.role === 'assistant' && displayContent === null;
 
   if (isError) {
     return (
@@ -72,6 +72,20 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     );
   }
 
+  if (isSlideRedirect) {
+    return (
+      <div className="mx-4 my-3 flex justify-start gap-3">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
+          <Star size={14} fill="currentColor" />
+        </div>
+        <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm px-4 py-2.5" style={{ background: 'var(--accent-light)' }}>
+          <span className="text-sm" style={{ color: 'var(--accent)' }}>スライド構成を作成しました</span>
+          <ArrowRight size={14} style={{ color: 'var(--accent)' }} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-4 my-3 flex justify-start gap-3">
       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
@@ -79,36 +93,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       </div>
 
       <div className="min-w-0 max-w-[85%] flex-1">
-        {thinking && (
-          <div className="mb-2">
-            <button
-              onClick={() => setShowThinking(!showThinking)}
-              className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors hover:bg-gray-50"
-              style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
-            >
-              {isStreaming ? (
-                <Loader2 size={11} className="animate-spin" />
-              ) : (
-                showThinking ? <ChevronDown size={11} /> : <ChevronRight size={11} />
-              )}
-              <span>{isStreaming ? '考え中...' : '思考プロセスを表示'}</span>
-            </button>
-            {(showThinking || isStreaming) && (
-              <div className="mt-1.5 max-h-40 overflow-y-auto rounded-lg border px-3 py-2 text-xs leading-relaxed"
-                style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
-              >
-                <p className="whitespace-pre-wrap">{thinking}</p>
-              </div>
-            )}
-          </div>
-        )}
-
         <div className="rounded-2xl rounded-tl-sm px-4 py-3" style={{ background: 'var(--surface)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
           {displayContent ? (
             <div className={`prose prose-sm max-w-none ${isStreaming ? 'typing-cursor' : ''}`}>
-              <Markdown>{displayContent}</Markdown>
+              <Markdown remarkPlugins={[remarkGfm]}>{displayContent}</Markdown>
             </div>
-          ) : isStreaming && thinking ? (
+          ) : isStreaming ? (
             <p className="thinking-pulse text-sm" style={{ color: 'var(--text-secondary)' }}>応答を生成中...</p>
           ) : null}
         </div>

@@ -11,7 +11,7 @@ import { MessageList } from './message-list';
 import { MessageInput } from './message-input';
 import { ModelSelector, AVAILABLE_MODELS } from './model-selector';
 import { SlidePanel } from '@/app/components/slides/slide-panel';
-import { isSlideStory, splitStoryContent } from '@/app/components/skills/slide-story-view';
+import { isSlideStory, splitStoryContent, parseStoryToSlides } from '@/application/slide-parser';
 import type { Message, Attachment } from '@/domain/entities/message';
 import type { SlideWork } from '@/domain/entities/slide-work';
 
@@ -35,7 +35,7 @@ export function ChatContainer() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
-  const [slideWork, setSlideWork] = useState<SlideWork>({ phase: 'empty', story: null, pptx: null });
+  const [slideWork, setSlideWork] = useState<SlideWork>({ phase: 'empty', story: null, slides: [], pptx: null, thinking: null, isStreaming: false });
   const [panelOpen, setPanelOpen] = useState(true);
 
   const handleSendMessage = async (text: string, attachments?: Attachment[]) => {
@@ -75,6 +75,7 @@ export function ChatContainer() {
         id: assistantId, role: 'assistant', content: '', createdAt: new Date(),
         metadata: { streaming: true },
       }]);
+      setSlideWork((prev) => ({ ...prev, isStreaming: true, thinking: null }));
 
       if (reader) {
         while (true) {
@@ -102,14 +103,21 @@ export function ChatContainer() {
           }
 
           if (updated) {
+            // Update global thinking tracker
+            if (thinkingContent) {
+              setSlideWork((prev) => ({ ...prev, thinking: thinkingContent }));
+            }
+
             // Update slide panel in real-time
             const cleanContent = stripPptxCode(assistantContent);
             if (isSlideStory(cleanContent)) {
               const { intro, storyContent } = splitStoryContent(cleanContent);
+              const parsedSlides = parseStoryToSlides(storyContent);
               setSlideWork((prev) => ({
                 ...prev,
                 phase: 'story',
                 story: { intro, storyContent },
+                slides: parsedSlides,
               }));
               if (!panelOpen) setPanelOpen(true);
             }
@@ -140,12 +148,14 @@ export function ChatContainer() {
         createdAt: new Date(),
         metadata: thinkingContent ? { thinking: thinkingContent } : undefined,
       }]);
+      setSlideWork((prev) => ({ ...prev, isStreaming: false }));
 
       // Final slide panel update
       const cleanFinal = stripPptxCode(finalContent);
       if (isSlideStory(cleanFinal)) {
         const { intro, storyContent } = splitStoryContent(cleanFinal);
-        setSlideWork((prev) => ({ ...prev, phase: 'story', story: { intro, storyContent } }));
+        const parsedSlides = parseStoryToSlides(storyContent);
+        setSlideWork((prev) => ({ ...prev, phase: 'story', story: { intro, storyContent }, slides: parsedSlides }));
       }
       const pptx = detectPptxCode(finalContent);
       if (pptx) {
@@ -190,8 +200,8 @@ export function ChatContainer() {
 
       {/* Two-pane body */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Chat pane */}
-        <div className={`flex flex-col ${panelOpen ? 'w-1/2 border-r' : 'w-full'}`} style={{ borderColor: 'var(--border)' }}>
+        {/* Chat pane — narrower when panel open to give workspace more room */}
+        <div className={`flex flex-col ${panelOpen ? 'w-[35%] min-w-[320px] border-r' : 'w-full'}`} style={{ borderColor: 'var(--border)' }}>
           <main className="flex-1 overflow-hidden">
             <MessageList messages={messages} isLoading={isLoading} />
           </main>
@@ -200,9 +210,9 @@ export function ChatContainer() {
           </footer>
         </div>
 
-        {/* Slide panel */}
+        {/* Slide panel — takes remaining space */}
         {panelOpen && (
-          <div className="w-1/2" style={{ background: 'var(--background)' }}>
+          <div className="flex-1" style={{ background: 'var(--background)' }}>
             <SlidePanel slideWork={slideWork} />
           </div>
         )}

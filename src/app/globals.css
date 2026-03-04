@@ -44,6 +44,27 @@ body {
   color: var(--accent);
 }
 
+/* Thinking bar animations */
+@keyframes thinking-fade-in {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 200px; }
+}
+
+@keyframes thinking-text-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.thinking-bar-content {
+  animation: thinking-fade-in 0.3s ease-out;
+  scroll-behavior: smooth;
+  transition: max-height 0.3s ease;
+}
+
+.thinking-bar-content p {
+  animation: thinking-text-in 0.15s ease-out;
+}
+
 /* Thinking pulse */
 @keyframes thinking-pulse {
   0%, 100% { opacity: 0.6; }
@@ -52,6 +73,16 @@ body {
 
 .thinking-pulse {
   animation: thinking-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes thinking-glow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.thinking-icon {
+  animation: thinking-glow 2s ease-in-out infinite;
+  transition: all 0.3s ease;
 }
 
 /* Smooth scroll */

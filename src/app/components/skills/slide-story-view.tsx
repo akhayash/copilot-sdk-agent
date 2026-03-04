@@ -8,6 +8,7 @@
 import React, { useMemo, useState } from 'react';
 import { Layers, ChevronDown, ChevronUp } from 'lucide-react';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface SlideOutline {
   number: number;
@@ -81,7 +82,7 @@ export function SlideStoryView({ content, intro }: SlideStoryViewProps) {
       {/* Intro text */}
       {intro && (
         <div className="prose prose-sm mb-3 max-w-none">
-          <Markdown>{intro}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]}>{intro}</Markdown>
         </div>
       )}
 
@@ -143,7 +144,7 @@ export function SlideStoryView({ content, intro }: SlideStoryViewProps) {
                   </span>
                 </div>
                 <div className="prose prose-sm max-w-none" style={{ color: 'var(--text-secondary)' }}>
-                  <Markdown>{slides.find((s) => s.number === selectedSlide)?.body || ''}</Markdown>
+                  <Markdown remarkPlugins={[remarkGfm]}>{slides.find((s) => s.number === selectedSlide)?.body || ''}</Markdown>
                 </div>
               </div>
             )}
