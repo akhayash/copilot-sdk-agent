@@ -83,3 +83,37 @@ export function createScenarioTool(
     },
   });
 }
+
+/**
+ * Creates an update_slide tool for updating individual slides.
+ * Emits a slide_update SSE event with a single slide's data.
+ */
+export function createUpdateSlideTool(
+  onSlideUpdate: (slide: ScenarioSlide) => void,
+) {
+  return defineTool('update_slide', {
+    description:
+      'Update a single slide in the existing scenario. Use this when the user asks to change a specific slide ' +
+      '(e.g. "P.10を変更して"). Only the specified slide is updated; other slides remain unchanged.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        number: { type: 'number', description: 'Slide number to update (1-based)' },
+        title: { type: 'string', description: 'Updated slide title' },
+        keyMessage: { type: 'string', description: 'Updated key takeaway' },
+        layout: { type: 'string', description: 'Layout type' },
+        bullets: { type: 'array', items: { type: 'string' }, description: 'Updated content items' },
+        notes: { type: 'string', description: 'Updated speaker notes' },
+        icon: { type: 'string', description: 'Updated icon name' },
+      },
+      required: ['number', 'title', 'keyMessage', 'layout', 'bullets'],
+    },
+    handler: async (args: ScenarioSlide) => {
+      onSlideUpdate(args);
+      return {
+        success: true,
+        message: `Slide ${args.number} "${args.title}" updated in the workspace panel.`,
+      };
+    },
+  });
+}

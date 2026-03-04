@@ -6,7 +6,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Layers, Presentation, Download, Check, Code, MessageSquare, Layout, ImageIcon } from 'lucide-react';
+import { Layers, Presentation, Download, Check, Code, MessageSquare, Layout } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { SlideWork } from '@/domain/entities/slide-work';
@@ -23,19 +23,10 @@ interface SlidePanelProps {
 
 export function SlidePanel({ slideWork }: SlidePanelProps) {
   const { phase, slides, story, pptx, isStreaming } = slideWork;
-  const [expandedSlides, setExpandedSlides] = useState<Set<number>>(new Set());
   const [showCode, setShowCode] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const toggleSlide = (num: number) => {
-    setExpandedSlides((prev) => {
-      const next = new Set(prev);
-      next.has(num) ? next.delete(num) : next.add(num);
-      return next;
-    });
-  };
 
   const handleDownload = async () => {
     if (!pptx) return;
@@ -151,17 +142,11 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
         )}
 
         <div className="px-3 py-2">
-          {slides.map((slide) => {
-            const isExpanded = expandedSlides.has(slide.number);
-            return (
+          {slides.map((slide) => (
               <div
                 key={slide.id}
-                className="mb-2 cursor-pointer rounded-lg border transition-all"
-                style={{
-                  borderColor: isExpanded ? 'var(--accent)' : 'var(--border)',
-                  background: isExpanded ? 'var(--accent-light)' : 'var(--surface)',
-                }}
-                onClick={() => toggleSlide(slide.number)}
+                className="mb-2 rounded-lg border"
+                style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
               >
                 {/* Slide header */}
                 <div className="flex items-start gap-2.5 px-3 py-2.5">
@@ -193,8 +178,8 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
                   </div>
                 </div>
 
-                {/* Content */}
-                <div className="border-t px-3 pb-2.5 pt-2" style={{ borderColor: isExpanded ? 'var(--accent)' : 'var(--border)', opacity: isExpanded ? 1 : 0.9 }}>
+                {/* Content — always fully visible */}
+                <div className="border-t px-3 pb-2.5 pt-2" style={{ borderColor: 'var(--border)' }}>
                   {slide.bullets.length > 0 && (
                     <div className="pl-8">
                       {slide.bullets.map((b, i) => (
@@ -204,39 +189,20 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
                       ))}
                     </div>
                   )}
-
-                  {isExpanded && (
-                    <div className="mt-2 space-y-2 pl-8">
-                      {slide.notes && (
-                        <div className="rounded-lg border p-2.5 text-[10px]" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
-                          <div className="mb-1 flex items-center gap-1">
-                            <MessageSquare size={9} style={{ color: 'var(--text-secondary)' }} />
-                            <span className="text-[9px] font-semibold" style={{ color: 'var(--text-secondary)' }}>スピーカーノート</span>
-                          </div>
-                          <div className="prose prose-sm max-w-none text-[10px]">
-                            <Markdown remarkPlugins={[remarkGfm]}>{slide.notes}</Markdown>
-                          </div>
-                        </div>
-                      )}
-                      <div className="flex flex-wrap items-center gap-2 text-[9px]" style={{ color: 'var(--text-secondary)' }}>
-                        <span className="flex items-center gap-1">
-                          <Layout size={9} />
-                          レイアウト: <strong>{LAYOUT_LABELS[slide.layout] || slide.layout}</strong>
-                        </span>
-                        {slide.icon && (
-                          <span className="flex items-center gap-1">
-                            <ImageIcon size={9} />
-                            アイコン: <strong>{slide.icon}</strong>
-                          </span>
-                        )}
-                        <span>コンテンツ: {slide.bullets.length}項目</span>
+                  {slide.notes && (
+                    <div className="mt-2 rounded-lg border p-2.5 pl-8 text-[10px]" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
+                      <div className="mb-1 flex items-center gap-1">
+                        <MessageSquare size={9} style={{ color: 'var(--text-secondary)' }} />
+                        <span className="text-[9px] font-semibold" style={{ color: 'var(--text-secondary)' }}>スピーカーノート</span>
+                      </div>
+                      <div className="prose prose-sm max-w-none text-[10px]">
+                        <Markdown remarkPlugins={[remarkGfm]}>{slide.notes}</Markdown>
                       </div>
                     </div>
                   )}
                 </div>
               </div>
-            );
-          })}
+          ))}
         </div>
 
         {pptx && (

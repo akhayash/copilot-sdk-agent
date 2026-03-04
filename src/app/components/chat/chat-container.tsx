@@ -121,6 +121,29 @@ export function ChatContainer() {
                   if (!panelOpen) setPanelOpen(true);
                   updated = true;
                 }
+                if (parsed.slide_update) {
+                  // Single slide update — merge into existing slides
+                  const s = parsed.slide_update;
+                  const updatedSlide: SlideItem = {
+                    id: `slide-${s.number}`,
+                    number: s.number,
+                    title: s.title,
+                    keyMessage: s.keyMessage || '',
+                    layout: (VALID_LAYOUTS.includes(s.layout as SlideLayout) ? s.layout : 'bullets') as SlideLayout,
+                    bullets: s.bullets,
+                    notes: s.notes || '',
+                    icon: s.icon || null,
+                    code: null,
+                    accent: ACCENT_CYCLE[(s.number - 1) % ACCENT_CYCLE.length],
+                  };
+                  setSlideWork((prev) => ({
+                    ...prev,
+                    slides: prev.slides.map((existing) =>
+                      existing.number === updatedSlide.number ? updatedSlide : existing
+                    ),
+                  }));
+                  updated = true;
+                }
               } catch (e) {
                 if (!(e instanceof SyntaxError)) throw e;
               }

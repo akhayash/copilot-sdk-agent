@@ -8,7 +8,7 @@ import path from 'path';
 import { getCopilotClient, getSessionOptions } from '@/infrastructure/copilot/client';
 import { ChatUseCase } from '@/application/chat-use-case';
 import { webSearchTool } from '@/infrastructure/tools/web-search-tool';
-import { createScenarioTool } from '@/infrastructure/tools/scenario-tool';
+import { createScenarioTool, createUpdateSlideTool } from '@/infrastructure/tools/scenario-tool';
 import type { SessionConfig } from '@github/copilot-sdk';
 import { approveAll } from '@github/copilot-sdk';
 
@@ -48,7 +48,11 @@ export async function POST(req: NextRequest) {
           const data = JSON.stringify({ scenario: payload });
           controller.enqueue(encoder.encode(`data: ${data}\n\n`));
         });
-        const tools = [scenarioTool, ...(process.env.TAVILY_API_KEY ? [webSearchTool] : [])];
+        const updateSlideTool = createUpdateSlideTool((slide) => {
+          const data = JSON.stringify({ slide_update: slide });
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        });
+        const tools = [scenarioTool, updateSlideTool, ...(process.env.TAVILY_API_KEY ? [webSearchTool] : [])];
 
         try {
           // Skill directories (SKILL.md based)
@@ -63,7 +67,7 @@ export async function POST(req: NextRequest) {
             skillDirectories: skillDirs,
             systemMessage: {
               mode: 'append' as const,
-              content: 'You are a helpful AI assistant that creates presentations. Always respond in the same language as the user. When creating a slide outline, ALWAYS use the set_scenario tool to send the scenario to the workspace panel. Do NOT output slide listings in the chat message.',
+              content: 'You are a helpful AI assistant that creates presentations. Always respond in the same language as the user. When creating a slide outline, ALWAYS use the set_scenario tool to send the scenario to the workspace panel. When the user asks to change a specific slide, use the update_slide tool to update only that slide. Do NOT output slide listings in the chat message.',
             },
             onPermissionRequest: approveAll,
           };
