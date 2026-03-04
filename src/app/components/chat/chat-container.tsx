@@ -1,21 +1,42 @@
 /**
- * UI Component: Chat Container
- * Main layout for chat interface
+ * UI Component: Chat Container (Workspace)
+ * Two-pane layout: Chat (left) + Slide Panel (right)
  */
 
 'use client';
 
 import React, { useState } from 'react';
-import { Star } from 'lucide-react';
+import { Star, PanelRightOpen, PanelRightClose } from 'lucide-react';
 import { MessageList } from './message-list';
 import { MessageInput } from './message-input';
 import { ModelSelector, AVAILABLE_MODELS } from './model-selector';
+import { SlidePanel } from '@/app/components/slides/slide-panel';
+import { isSlideStory, splitStoryContent } from '@/app/components/skills/slide-story-view';
 import type { Message, Attachment } from '@/domain/entities/message';
+import type { SlideWork } from '@/domain/entities/slide-work';
+
+function detectPptxCode(content: string) {
+  const match = content.match(/```(?:javascript|js)\s*([\s\S]*?)\s*```/);
+  if (!match) return null;
+  const code = match[1];
+  if (code.includes('addSlide') || code.includes('addText') || code.includes('pres.')) {
+    const titleMatch = code.match(/pres\.title\s*=\s*["'`]([^"'`]+)["'`]/) ||
+      code.match(/title.*?["'`]([^"'`]{3,50})["'`]/);
+    return { code, title: titleMatch?.[1] || 'Presentation' };
+  }
+  return null;
+}
+
+function stripPptxCode(content: string) {
+  return content.replace(/```(?:javascript|js)\s*[\s\S]*?\s*```/, '').trim();
+}
 
 export function ChatContainer() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
+  const [slideWork, setSlideWork] = useState<SlideWork>({ phase: 'empty', story: null, pptx: null });
+  const [panelOpen, setPanelOpen] = useState(true);
 
   const handleSendMessage = async (text: string, attachments?: Attachment[]) => {
     const userMessage: Message = {
@@ -33,24 +54,15 @@ export function ChatContainer() {
     try {
       const history = newMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        }));
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          history: history.slice(0, -1),
-          model: selectedModel,
-        }),
+        body: JSON.stringify({ message: text, history: history.slice(0, -1), model: selectedModel }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -59,14 +71,10 @@ export function ChatContainer() {
       let buffer = '';
       const assistantId = crypto.randomUUID();
 
-      const streamingMessage: Message = {
-        id: assistantId,
-        role: 'assistant',
-        content: '',
-        createdAt: new Date(),
+      setMessages([...newMessages, {
+        id: assistantId, role: 'assistant', content: '', createdAt: new Date(),
         metadata: { streaming: true },
-      };
-      setMessages([...newMessages, streamingMessage]);
+      }]);
 
       if (reader) {
         while (true) {
@@ -82,20 +90,11 @@ export function ChatContainer() {
             if (line.startsWith('data: ')) {
               const data = line.slice(6);
               if (data === '[DONE]') continue;
-
               try {
                 const parsed = JSON.parse(data);
-                if (parsed.error) {
-                  throw new Error(parsed.error);
-                }
-                if (parsed.thinking) {
-                  thinkingContent += parsed.thinking;
-                  updated = true;
-                }
-                if (parsed.content) {
-                  assistantContent += parsed.content;
-                  updated = true;
-                }
+                if (parsed.error) throw new Error(parsed.error);
+                if (parsed.thinking) { thinkingContent += parsed.thinking; updated = true; }
+                if (parsed.content) { assistantContent += parsed.content; updated = true; }
               } catch (e) {
                 if (!(e instanceof SyntaxError)) throw e;
               }
@@ -103,38 +102,61 @@ export function ChatContainer() {
           }
 
           if (updated) {
-            const updatedMessage: Message = {
-              id: assistantId,
-              role: 'assistant',
+            // Update slide panel in real-time
+            const cleanContent = stripPptxCode(assistantContent);
+            if (isSlideStory(cleanContent)) {
+              const { intro, storyContent } = splitStoryContent(cleanContent);
+              setSlideWork((prev) => ({
+                ...prev,
+                phase: 'story',
+                story: { intro, storyContent },
+              }));
+              if (!panelOpen) setPanelOpen(true);
+            }
+
+            const pptx = detectPptxCode(assistantContent);
+            if (pptx) {
+              setSlideWork((prev) => ({ ...prev, phase: 'ready', pptx }));
+              if (!panelOpen) setPanelOpen(true);
+            }
+
+            setMessages([...newMessages, {
+              id: assistantId, role: 'assistant',
               content: assistantContent || (thinkingContent ? '...' : ''),
               createdAt: new Date(),
               metadata: {
                 ...(thinkingContent ? { thinking: thinkingContent } : {}),
                 streaming: true,
               },
-            };
-            setMessages([...newMessages, updatedMessage]);
+            }]);
           }
         }
       }
 
-      const assistantMessage: Message = {
-        id: assistantId,
-        role: 'assistant',
-        content: assistantContent || '(empty response)',
+      // Finalize
+      const finalContent = assistantContent || '(empty response)';
+      setMessages([...newMessages, {
+        id: assistantId, role: 'assistant', content: finalContent,
         createdAt: new Date(),
         metadata: thinkingContent ? { thinking: thinkingContent } : undefined,
-      };
+      }]);
 
-      setMessages([...newMessages, assistantMessage]);
+      // Final slide panel update
+      const cleanFinal = stripPptxCode(finalContent);
+      if (isSlideStory(cleanFinal)) {
+        const { intro, storyContent } = splitStoryContent(cleanFinal);
+        setSlideWork((prev) => ({ ...prev, phase: 'story', story: { intro, storyContent } }));
+      }
+      const pptx = detectPptxCode(finalContent);
+      if (pptx) {
+        setSlideWork((prev) => ({ ...prev, phase: 'ready', pptx }));
+      }
     } catch (error) {
-      const errorMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'error',
+      setMessages([...newMessages, {
+        id: crypto.randomUUID(), role: 'error',
         content: error instanceof Error ? error.message : 'Unknown error',
         createdAt: new Date(),
-      };
-      setMessages([...newMessages, errorMessage]);
+      }]);
     } finally {
       setIsLoading(false);
     }
@@ -143,28 +165,48 @@ export function ChatContainer() {
   return (
     <div className="flex h-screen flex-col" style={{ background: 'var(--background)' }}>
       {/* Header */}
-      <header className="flex items-center justify-between border-b px-6 py-3" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+      <header className="flex items-center justify-between border-b px-4 py-2.5" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg text-white" style={{ background: 'var(--accent)' }}>
-            <Star size={18} fill="currentColor" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg text-white" style={{ background: 'var(--accent)' }}>
+            <Star size={16} fill="currentColor" />
           </div>
           <div>
-            <h1 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>Copilot SDK Agent</h1>
-            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>AI Presentation Generator</p>
+            <h1 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Copilot SDK Agent</h1>
+            <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>AI Presentation Generator</p>
           </div>
         </div>
-        <ModelSelector value={selectedModel} onChange={setSelectedModel} disabled={isLoading} />
+        <div className="flex items-center gap-2">
+          <ModelSelector value={selectedModel} onChange={setSelectedModel} disabled={isLoading} />
+          <button
+            onClick={() => setPanelOpen(!panelOpen)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-gray-100"
+            style={{ color: 'var(--text-secondary)' }}
+            title={panelOpen ? 'パネルを閉じる' : 'パネルを開く'}
+          >
+            {panelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+          </button>
+        </div>
       </header>
 
-      {/* Messages */}
-      <main className="flex-1 overflow-hidden">
-        <MessageList messages={messages} isLoading={isLoading} />
-      </main>
+      {/* Two-pane body */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Chat pane */}
+        <div className={`flex flex-col ${panelOpen ? 'w-1/2 border-r' : 'w-full'}`} style={{ borderColor: 'var(--border)' }}>
+          <main className="flex-1 overflow-hidden">
+            <MessageList messages={messages} isLoading={isLoading} />
+          </main>
+          <footer className="border-t" style={{ borderColor: 'var(--border)' }}>
+            <MessageInput onSend={handleSendMessage} disabled={isLoading} />
+          </footer>
+        </div>
 
-      {/* Input */}
-      <footer className="border-t" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-        <MessageInput onSend={handleSendMessage} disabled={isLoading} />
-      </footer>
+        {/* Slide panel */}
+        {panelOpen && (
+          <div className="w-1/2" style={{ background: 'var(--background)' }}>
+            <SlidePanel slideWork={slideWork} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

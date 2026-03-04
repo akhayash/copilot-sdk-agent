@@ -1,15 +1,15 @@
 /**
  * UI Component: Message Bubble
+ * Chat-only view — slide content appears in the right panel, not here.
  */
 
 'use client';
 
 import React, { useMemo, useState } from 'react';
 import Markdown from 'react-markdown';
-import { Star, Loader2, ChevronDown, ChevronRight, Code, AlertTriangle, Paperclip } from 'lucide-react';
+import { Star, Loader2, ChevronDown, ChevronRight, AlertTriangle, Paperclip } from 'lucide-react';
 import type { Message } from '@/domain/entities/message';
-import { PptxDownloadCard } from '@/app/components/skills/pptx-download-card';
-import { SlideStoryView, isSlideStory, splitStoryContent } from '@/app/components/skills/slide-story-view';
+import { isSlideStory, splitStoryContent } from '@/app/components/skills/slide-story-view';
 
 interface MessageBubbleProps {
   message: Message;
@@ -20,38 +20,23 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const isError = message.role === 'error';
   const isStreaming = message.metadata?.streaming === true;
   const [showThinking, setShowThinking] = useState(false);
-  const [showCode, setShowCode] = useState(false);
 
   const thinking = message.metadata?.thinking as string | undefined;
 
-  // Detect pptxgenjs code in assistant responses
-  const pptxCode = useMemo(() => {
-    if (message.role !== 'assistant') return null;
-    const match = message.content.match(/```(?:javascript|js)\s*([\s\S]*?)\s*```/);
-    if (!match) return null;
-    const code = match[1];
-    if (code.includes('addSlide') || code.includes('addText') || code.includes('pres.')) {
-      const titleMatch = code.match(/pres\.title\s*=\s*["'`]([^"'`]+)["'`]/) ||
-        code.match(/title.*?["'`]([^"'`]{3,50})["'`]/);
-      return { code, title: titleMatch?.[1] || 'Presentation' };
+  // Clean content: strip pptxgenjs code and slide story (shown in panel)
+  const displayContent = useMemo(() => {
+    if (message.role !== 'assistant') return message.content;
+    let content = message.content;
+    // Strip pptxgenjs code blocks
+    content = content.replace(/```(?:javascript|js)\s*[\s\S]*?\s*```/, '').trim();
+    // If it's a slide story, show only the intro
+    if (isSlideStory(content)) {
+      const { intro } = splitStoryContent(content);
+      return intro || 'スライド構成案を作成しました。右のパネルをご確認ください。';
     }
-    return null;
+    return content;
   }, [message.role, message.content]);
 
-  // Strip pptxgenjs code block from displayed content
-  const displayContent = useMemo(() => {
-    if (!pptxCode) return message.content;
-    return message.content.replace(/```(?:javascript|js)\s*[\s\S]*?\s*```/, '').trim();
-  }, [message.content, pptxCode]);
-
-  // Detect slide story content
-  const slideStory = useMemo(() => {
-    if (message.role !== 'assistant') return null;
-    if (!isSlideStory(displayContent)) return null;
-    return splitStoryContent(displayContent);
-  }, [message.role, displayContent]);
-
-  // Error message
   if (isError) {
     return (
       <div className="mx-4 my-3 flex justify-start">
@@ -66,11 +51,10 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     );
   }
 
-  // User message
   if (isUser) {
     return (
       <div className="mx-4 my-3 flex justify-end">
-        <div className="max-w-2xl rounded-2xl rounded-br-sm px-4 py-2.5 text-white" style={{ background: 'var(--accent)' }}>
+        <div className="max-w-[80%] rounded-2xl rounded-br-sm px-4 py-2.5 text-white" style={{ background: 'var(--accent)' }}>
           <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
           {message.attachments && message.attachments.length > 0 && (
             <div className="mt-2 space-y-1 border-t border-white/20 pt-2">
@@ -88,16 +72,13 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     );
   }
 
-  // Assistant message
   return (
     <div className="mx-4 my-3 flex justify-start gap-3">
-      {/* Avatar */}
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
-        <Star size={16} fill="currentColor" />
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
+        <Star size={14} fill="currentColor" />
       </div>
 
-      <div className="min-w-0 max-w-3xl flex-1">
-        {/* Thinking section */}
+      <div className="min-w-0 max-w-[85%] flex-1">
         {thinking && (
           <div className="mb-2">
             <button
@@ -113,7 +94,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               <span>{isStreaming ? '考え中...' : '思考プロセスを表示'}</span>
             </button>
             {(showThinking || isStreaming) && (
-              <div className="mt-1.5 max-h-48 overflow-y-auto rounded-lg border px-3 py-2 text-xs leading-relaxed"
+              <div className="mt-1.5 max-h-40 overflow-y-auto rounded-lg border px-3 py-2 text-xs leading-relaxed"
                 style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
               >
                 <p className="whitespace-pre-wrap">{thinking}</p>
@@ -122,41 +103,14 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           </div>
         )}
 
-        {/* Main content */}
-        <div className="rounded-2xl rounded-tl-sm px-4 py-3" style={{ background: 'var(--surface)', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-          {slideStory ? (
-            <SlideStoryView content={slideStory.storyContent} intro={slideStory.intro} />
-          ) : displayContent ? (
-            <div className={`prose prose-sm max-w-none ${isStreaming && !pptxCode ? 'typing-cursor' : ''}`}>
+        <div className="rounded-2xl rounded-tl-sm px-4 py-3" style={{ background: 'var(--surface)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+          {displayContent ? (
+            <div className={`prose prose-sm max-w-none ${isStreaming ? 'typing-cursor' : ''}`}>
               <Markdown>{displayContent}</Markdown>
             </div>
           ) : isStreaming && thinking ? (
             <p className="thinking-pulse text-sm" style={{ color: 'var(--text-secondary)' }}>応答を生成中...</p>
           ) : null}
-
-          {/* PPTX generation card (replaces raw code block) */}
-          {pptxCode && (
-            <div className="mt-3">
-              <PptxDownloadCard
-                title={pptxCode.title}
-                code={pptxCode.code}
-                onError={(err) => console.error('PPTX generation error:', err)}
-              />
-              <button
-                onClick={() => setShowCode(!showCode)}
-                className="mt-2 flex items-center gap-1 text-xs hover:underline"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                <Code size={11} />
-                {showCode ? '生成コードを隠す' : '生成コードを表示'}
-              </button>
-              {showCode && (
-                <pre className="mt-2 max-h-64 overflow-auto rounded-lg p-3 text-xs" style={{ background: 'var(--surface-secondary)' }}>
-                  <code>{pptxCode.code}</code>
-                </pre>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>
