@@ -23,9 +23,8 @@ Copilot SDK を使用したエージェントアプリケーション。
 │  │  2-Pane Workspace    │  │  API Routes                 │  │
 │  │  ┌────────┬────────┐ │  │  /api/chat     (SSE stream) │  │
 │  │  │ Chat   │Scenario│ │→ │  /api/skills/pptx (PPTX DL) │  │
-│  │  │ Pane   │ Panel  │ │  │  /api/skills/pptx/slide     │  │
-│  │  └────────┴────────┘ │  │  /api/health                │  │
-│  └──────────────────────┘  └────────────┬────────────────┘  │
+│  │  │ Pane   │ Panel  │ │  │  /api/health                │  │
+│  │  └────────┴────────┘ │  └────────────┬────────────────┘  │
 │                                         │                   │
 ├─────────────────────────────────────────┼───────────────────┤
 │  Application Layer                      │                   │
@@ -102,8 +101,7 @@ copilot-sdk-agent/
 │       │   ├── chat/route.ts          # POST — SSE ストリーミング + ツール呼び出し
 │       │   ├── health/route.ts        # GET — ヘルスチェック
 │       │   └── skills/pptx/
-│       │       ├── route.ts           # POST — PPTX コード実行 & バイナリ返却
-│       │       └── slide/route.ts     # POST — 単一スライド PPTX 生成
+│       │       └── route.ts           # POST — PPTX コード実行 & バイナリ返却
 │       └── components/
 │           ├── chat/
 │           │   ├── chat-container.tsx  # 2ペインレイアウト + SSEイベント処理
@@ -113,8 +111,7 @@ copilot-sdk-agent/
 │           │   ├── model-selector.tsx  # モデル選択ドロップダウン
 │           │   └── attachment-preview.tsx
 │           ├── slides/
-│           │   ├── slide-panel.tsx     # シナリオパネル（右ペイン）
-│           │   └── slide-preview.tsx   # SVGプレビュー（未使用・参考実装）
+│           │   └── slide-panel.tsx     # シナリオパネル（右ペイン）
 │           └── skills/
 │               ├── pptx-download-card.tsx
 │               └── slide-story-view.tsx
@@ -189,11 +186,6 @@ SSE ストリーミングチャット。ツール呼び出し（set_scenario, up
 AI生成の pptxgenjs コードを実行し、PPTX バイナリを返却。
 - Request: `{ code, title? }`
 - Response: `application/vnd.openxmlformats-officedocument.presentationml.presentation`
-
-### POST `/api/skills/pptx/slide`
-単一スライドの PPTX 生成 + PNG プレビュー。
-- Request: `{ code, slideNumber, title }`
-- Response: `{ slideNumber, pptx: base64, preview: base64png }`
 
 ### GET `/api/health`
 ヘルスチェック。
