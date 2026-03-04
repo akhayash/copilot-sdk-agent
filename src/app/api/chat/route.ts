@@ -8,6 +8,7 @@ import path from 'path';
 import { getCopilotClient, getSessionOptions } from '@/infrastructure/copilot/client';
 import { ChatUseCase } from '@/application/chat-use-case';
 import { webSearchTool } from '@/infrastructure/tools/web-search-tool';
+import { createScenarioTool } from '@/infrastructure/tools/scenario-tool';
 import type { SessionConfig } from '@github/copilot-sdk';
 import { approveAll } from '@github/copilot-sdk';
 
@@ -33,26 +34,6 @@ export async function POST(req: NextRequest) {
     // Initialize copilot client
     const copilot = await getCopilotClient();
     const sessionOpts = await getSessionOptions({ streaming: true, model });
-    // Build custom tools
-    const tools = process.env.TAVILY_API_KEY ? [webSearchTool] : [];
-
-    // Skill directories (SKILL.md based)
-    const skillDirs = [
-      path.resolve(process.cwd(), 'skills', 'create-slide-story'),
-      path.resolve(process.cwd(), 'skills', 'generate-pptx'),
-    ];
-
-    const sessionConfig: SessionConfig = {
-      ...sessionOpts,
-      tools,
-      skillDirectories: skillDirs,
-      systemMessage: {
-        mode: 'append' as const,
-        content: 'You are a helpful AI assistant that creates presentations. Always respond in the same language as the user.',
-      },
-      onPermissionRequest: approveAll,
-    };
-
     // Create streaming response
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
@@ -62,7 +43,31 @@ export async function POST(req: NextRequest) {
         let unsubReasoning: (() => void) | null = null;
         let unsubError: (() => void) | null = null;
 
+        // Build custom tools (scenario tool needs controller for SSE)
+        const scenarioTool = createScenarioTool((payload) => {
+          const data = JSON.stringify({ scenario: payload });
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        });
+        const tools = [scenarioTool, ...(process.env.TAVILY_API_KEY ? [webSearchTool] : [])];
+
         try {
+          // Skill directories (SKILL.md based)
+          const skillDirs = [
+            path.resolve(process.cwd(), 'skills', 'create-slide-story'),
+            path.resolve(process.cwd(), 'skills', 'generate-pptx'),
+          ];
+
+          const sessionConfig: SessionConfig = {
+            ...sessionOpts,
+            tools,
+            skillDirectories: skillDirs,
+            systemMessage: {
+              mode: 'append' as const,
+              content: 'You are a helpful AI assistant that creates presentations. Always respond in the same language as the user. When creating a slide outline, ALWAYS use the set_scenario tool to send the scenario to the workspace panel. Do NOT output slide listings in the chat message.',
+            },
+            onPermissionRequest: approveAll,
+          };
+
           // Create session
           session = await copilot.createSession(sessionConfig);
 

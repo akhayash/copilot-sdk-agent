@@ -9,9 +9,8 @@
 import React, { useMemo } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Star, AlertTriangle, Paperclip, ArrowRight, Loader2 } from 'lucide-react';
+import { Star, AlertTriangle, Paperclip, Loader2 } from 'lucide-react';
 import type { Message } from '@/domain/entities/message';
-import { isSlideStory } from '@/application/slide-parser';
 
 interface MessageBubbleProps {
   message: Message;
@@ -26,12 +25,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const displayContent = useMemo(() => {
     if (message.role !== 'assistant') return message.content;
     let content = message.content;
+    // Strip pptxgenjs code blocks (shown in panel)
     content = content.replace(/```(?:javascript|js)\s*[\s\S]*?\s*```/, '').trim();
-    if (isSlideStory(content)) return null;
-    return content;
+    return content || null;
   }, [message.role, message.content]);
 
-  const isSlideRedirect = message.role === 'assistant' && displayContent === null;
+  const isEmpty = message.role === 'assistant' && displayContent === null;
 
   if (isError) {
     return (
@@ -68,19 +67,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     );
   }
 
-  if (isSlideRedirect) {
-    return (
-      <div className="mx-4 my-3 flex justify-start gap-3">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
-          <Star size={14} fill="currentColor" />
-        </div>
-        <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm px-4 py-2.5" style={{ background: 'var(--accent-light)' }}>
-          <span className="text-sm" style={{ color: 'var(--accent)' }}>スライド構成を作成しました</span>
-          <ArrowRight size={14} style={{ color: 'var(--accent)' }} />
-        </div>
-      </div>
-    );
-  }
+  // Skip rendering empty assistant messages (e.g., only had pptx code)
+  if (isEmpty && !isStreaming) return null;
 
   return (
     <div className="mx-4 my-3 flex justify-start gap-3">

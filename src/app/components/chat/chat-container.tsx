@@ -11,9 +11,10 @@ import { MessageList } from './message-list';
 import { MessageInput } from './message-input';
 import { ModelSelector, AVAILABLE_MODELS } from './model-selector';
 import { SlidePanel } from '@/app/components/slides/slide-panel';
-import { isSlideStory, splitStoryContent, parseStoryToSlides } from '@/application/slide-parser';
 import type { Message, Attachment } from '@/domain/entities/message';
-import type { SlideWork } from '@/domain/entities/slide-work';
+import type { SlideWork, SlideItem } from '@/domain/entities/slide-work';
+
+const ACCENT_CYCLE: SlideItem['accent'][] = ['blue', 'green', 'purple', 'teal', 'orange'];
 
 function detectPptxCode(content: string) {
   const match = content.match(/```(?:javascript|js)\s*([\s\S]*?)\s*```/);
@@ -25,10 +26,6 @@ function detectPptxCode(content: string) {
     return { code, title: titleMatch?.[1] || 'Presentation' };
   }
   return null;
-}
-
-function stripPptxCode(content: string) {
-  return content.replace(/```(?:javascript|js)\s*[\s\S]*?\s*```/, '').trim();
 }
 
 export function ChatContainer() {
@@ -96,6 +93,29 @@ export function ChatContainer() {
                 if (parsed.error) throw new Error(parsed.error);
                 if (parsed.thinking) { thinkingContent += parsed.thinking; updated = true; }
                 if (parsed.content) { assistantContent += parsed.content; updated = true; }
+                if (parsed.scenario) {
+                  // Scenario tool called — populate right panel directly
+                  const { title, slides } = parsed.scenario;
+                  const slideItems: SlideItem[] = slides.map((s: { number: number; title: string; bullets: string[]; notes?: string }) => ({
+                    id: `slide-${s.number}`,
+                    number: s.number,
+                    title: s.title,
+                    bullets: s.bullets,
+                    notes: s.notes || '',
+                    rawStory: '',
+                    code: null,
+                    accent: ACCENT_CYCLE[(s.number - 1) % ACCENT_CYCLE.length],
+                  }));
+                  setSlideWork((prev) => ({
+                    ...prev,
+                    phase: 'story',
+                    story: { intro: '', storyContent: '' },
+                    slides: slideItems,
+                    pptx: prev.pptx ? { ...prev.pptx, title } : null,
+                  }));
+                  if (!panelOpen) setPanelOpen(true);
+                  updated = true;
+                }
               } catch (e) {
                 if (!(e instanceof SyntaxError)) throw e;
               }
@@ -108,20 +128,7 @@ export function ChatContainer() {
               setSlideWork((prev) => ({ ...prev, thinking: thinkingContent }));
             }
 
-            // Update slide panel in real-time
-            const cleanContent = stripPptxCode(assistantContent);
-            if (isSlideStory(cleanContent)) {
-              const { intro, storyContent } = splitStoryContent(cleanContent);
-              const parsedSlides = parseStoryToSlides(storyContent);
-              setSlideWork((prev) => ({
-                ...prev,
-                phase: 'story',
-                story: { intro, storyContent },
-                slides: parsedSlides,
-              }));
-              if (!panelOpen) setPanelOpen(true);
-            }
-
+            // Detect PPTX code in chat stream
             const pptx = detectPptxCode(assistantContent);
             if (pptx) {
               setSlideWork((prev) => ({ ...prev, phase: 'ready', pptx }));
@@ -150,13 +157,7 @@ export function ChatContainer() {
       }]);
       setSlideWork((prev) => ({ ...prev, isStreaming: false }));
 
-      // Final slide panel update
-      const cleanFinal = stripPptxCode(finalContent);
-      if (isSlideStory(cleanFinal)) {
-        const { intro, storyContent } = splitStoryContent(cleanFinal);
-        const parsedSlides = parseStoryToSlides(storyContent);
-        setSlideWork((prev) => ({ ...prev, phase: 'story', story: { intro, storyContent }, slides: parsedSlides }));
-      }
+      // Final PPTX code detection
       const pptx = detectPptxCode(finalContent);
       if (pptx) {
         setSlideWork((prev) => ({ ...prev, phase: 'ready', pptx }));
