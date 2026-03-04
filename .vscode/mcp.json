@@ -6,9 +6,8 @@
       "args": ["-y", "chrome-devtools-mcp@latest"]
     },
     "microsoft-learn": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@azure/mcp@latest", "server", "start"]
+      "type": "sse",
+      "url": "https://learn.microsoft.com/api/mcp"
     }
   }
 }
