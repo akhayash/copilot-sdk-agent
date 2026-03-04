@@ -70,9 +70,11 @@ export function parseStoryToSlides(storyContent: string): SlideItem[] {
       id: `slide-${pos.number}`,
       number: pos.number,
       title: pos.title.replace(/\*\*/g, ''),
+      keyMessage: '',
+      layout: (pos.number === 1 ? 'title' : 'bullets') as SlideItem['layout'],
       bullets,
       notes: noteLines.join('\n'),
-      rawStory: storyContent.slice(pos.start, bodyEnd).trim(),
+      icon: null,
       code: null,
       accent: ACCENT_CYCLE[(pos.number - 1) % ACCENT_CYCLE.length],
     };

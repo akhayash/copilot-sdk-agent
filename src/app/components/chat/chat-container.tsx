@@ -12,9 +12,10 @@ import { MessageInput } from './message-input';
 import { ModelSelector, AVAILABLE_MODELS } from './model-selector';
 import { SlidePanel } from '@/app/components/slides/slide-panel';
 import type { Message, Attachment } from '@/domain/entities/message';
-import type { SlideWork, SlideItem } from '@/domain/entities/slide-work';
+import type { SlideWork, SlideItem, SlideLayout } from '@/domain/entities/slide-work';
 
 const ACCENT_CYCLE: SlideItem['accent'][] = ['blue', 'green', 'purple', 'teal', 'orange'];
+const VALID_LAYOUTS: SlideLayout[] = ['title', 'agenda', 'section', 'bullets', 'cards', 'stats', 'comparison', 'timeline', 'diagram', 'summary'];
 
 function detectPptxCode(content: string) {
   const match = content.match(/```(?:javascript|js)\s*([\s\S]*?)\s*```/);
@@ -96,13 +97,15 @@ export function ChatContainer() {
                 if (parsed.scenario) {
                   // Scenario tool called — populate right panel directly
                   const { title, slides } = parsed.scenario;
-                  const slideItems: SlideItem[] = slides.map((s: { number: number; title: string; bullets: string[]; notes?: string }) => ({
+                  const slideItems: SlideItem[] = slides.map((s: { number: number; title: string; keyMessage?: string; layout?: string; bullets: string[]; notes?: string; icon?: string }) => ({
                     id: `slide-${s.number}`,
                     number: s.number,
                     title: s.title,
+                    keyMessage: s.keyMessage || '',
+                    layout: (VALID_LAYOUTS.includes(s.layout as SlideLayout) ? s.layout : 'bullets') as SlideLayout,
                     bullets: s.bullets,
                     notes: s.notes || '',
-                    rawStory: '',
+                    icon: s.icon || null,
                     code: null,
                     accent: ACCENT_CYCLE[(s.number - 1) % ACCENT_CYCLE.length],
                   }));

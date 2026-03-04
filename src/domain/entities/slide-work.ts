@@ -13,20 +13,26 @@ export interface SlideCode {
   code: string;
 }
 
+export type SlideLayout = 'title' | 'agenda' | 'section' | 'bullets' | 'cards' | 'stats' | 'comparison' | 'timeline' | 'diagram' | 'summary';
+
 /** Per-slide structured data for preview + editing */
 export interface SlideItem {
   id: string;
   number: number;
   title: string;
-  /** Bullet points / content items parsed from story */
+  /** The "so what" — key takeaway this slide must communicate */
+  keyMessage: string;
+  /** Layout type determines visual structure */
+  layout: SlideLayout;
+  /** Bullet points / content items */
   bullets: string[];
   /** Speaker notes / detailed description */
   notes: string;
-  /** Raw story markdown for this slide */
-  rawStory: string;
+  /** Suggested icon name from public/icons/ (e.g. 'brain', 'cloud', 'rocket') */
+  icon: string | null;
   /** Per-slide pptxgenjs code (when available) */
   code: string | null;
-  /** Visual style hint from content analysis */
+  /** Visual style hint */
   accent: 'blue' | 'green' | 'purple' | 'teal' | 'orange';
 }
 

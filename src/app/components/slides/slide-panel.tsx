@@ -201,9 +201,21 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
                       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold text-white" style={{ background: 'var(--accent)' }}>
                         {slide.number}
                       </span>
-                      <span className="text-xs font-semibold leading-tight" style={{ color: 'var(--foreground)' }}>
-                        {slide.title}
-                      </span>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-xs font-semibold leading-tight" style={{ color: 'var(--foreground)' }}>
+                          {slide.title}
+                        </span>
+                        {slide.keyMessage && (
+                          <p className="mt-0.5 truncate text-[9px] italic" style={{ color: 'var(--accent)' }}>
+                            {slide.keyMessage}
+                          </p>
+                        )}
+                      </div>
+                      {slide.layout && (
+                        <span className="shrink-0 rounded px-1 py-0.5 text-[8px]" style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}>
+                          {slide.layout}
+                        </span>
+                      )}
                     </div>
                     {slide.bullets.length > 0 && (
                       <div className="mt-1.5 pl-7">
@@ -234,7 +246,7 @@ export function SlidePanel({ slideWork }: SlidePanelProps) {
                     <div className={`w-full overflow-hidden rounded-lg border transition-shadow ${isActive ? 'shadow-md' : ''}`}
                       style={{ borderColor: isActive ? 'var(--accent)' : 'var(--border)' }}
                     >
-                      <SlidePreview slide={slide} isTitle={slide.number === 1} className="w-full" />
+                      <SlidePreview slide={slide} className="w-full" />
                     </div>
                   </div>
                 </div>

@@ -68,6 +68,42 @@ F.EN  // 'Segoe UI'     — 英数字・ヘッダー
 
 ## デザインガイドライン
 
+### アイコンの使用（重要）
+
+`public/icons/` に 64x64 PNG アイコンが用意されている。**積極的に使用すること。**
+
+```javascript
+// アイコンの使い方
+slide.addImage({
+  path: 'public/icons/brain.png',
+  x: 0.5, y: 1.0, w: 0.5, h: 0.5,
+});
+```
+
+利用可能アイコン: `arrow-trending-up`, `brain`, `building`, `calendar`, `chart`, `checkmark-circle`, `cloud`, `code`, `data-trending`, `document`, `globe`, `lightbulb`, `link`, `lock-closed`, `money`, `people-team`, `rocket`, `search`, `settings`, `shield`, `sparkle`, `star`, `target`, `warning`
+
+**アイコン使用ルール:**
+- カードの左上にアイコンを配置してビジュアルアクセントにする
+- タイトルスライドやセクション区切りでアイコンを大きめに使う
+- 箇条書きの先頭にアイコンを使ってリッチな印象にする
+- 単調な箇条書きスライドを避け、アイコン付きカードレイアウトを優先する
+
+### McKinsey式レイアウト原則
+
+1. **スライドタイトル = 主張**: シナリオの `keyMessage` をスライドタイトルとして使う
+2. **レイアウト多様性**: 3枚連続で同じレイアウトを使わない
+3. **データ重視**: 数値がある場合は `stats` レイアウト（drawStat）で大きく見せる
+4. **比較は並列**: Before/After や選択肢は `cards` レイアウトで横並び
+5. **1スライド1メッセージ**: 詰め込みすぎない
+
+### シナリオとの連動
+
+`set_scenario` ツールで事前にシナリオが設定されている場合:
+- シナリオの `title`, `keyMessage`, `layout`, `icon` に従ってスライドを生成する
+- `keyMessage` をスライドのメインタイトル（大きな文字）として使用する
+- `layout` に対応するレイアウトパターンを適用する
+- `icon` で指定されたアイコンを `public/icons/{icon}.png` で配置する
+
 ### フォントサイズ
 
 | 用途               | サイズ  | 太さ    |
