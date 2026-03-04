@@ -217,24 +217,55 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
 
         {pptx && (
           <div className="px-3 pb-3">
-            <div className="rounded-xl border p-3" style={{ borderColor: 'var(--accent)', background: 'var(--accent-light)' }}>
-              <div className="flex items-center gap-3">
-                <Presentation size={18} style={{ color: 'var(--accent)' }} />
-                <p className="flex-1 text-xs font-semibold" style={{ color: 'var(--foreground)' }}>プレゼンテーション準備完了</p>
+            <div className="rounded-xl border p-4" style={{ borderColor: 'var(--accent)', background: 'var(--accent-light)' }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Presentation size={20} style={{ color: 'var(--accent)' }} />
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>プレゼンテーション準備完了</p>
+                    <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{slides.length}枚のスライド</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleDownload}
+                  disabled={isGenerating}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                  style={{ background: 'var(--accent)' }}
+                >
+                  {isGenerating ? '生成中...' : downloaded ? <><Check size={12} /> 再ダウンロード</> : <><Download size={13} /> ダウンロード</>}
+                </button>
               </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); setShowCode(!showCode); }}
-                className="mt-2 flex items-center gap-1.5 text-xs hover:underline"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                <Code size={12} />
-                {showCode ? 'コードを隠す' : 'コードを表示'}
-              </button>
-              {showCode && (
-                <pre className="mt-2 max-h-48 overflow-auto rounded-lg p-2 text-[10px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                  <code>{pptx.code}</code>
-                </pre>
-              )}
+              {/* Code artifact */}
+              <div className="mt-3">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowCode(!showCode); }}
+                  className="flex items-center gap-1.5 text-xs hover:underline"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  <Code size={13} />
+                  {showCode ? 'コードを隠す' : '生成コードを表示'}
+                </button>
+                {showCode && (
+                  <div className="mt-2 overflow-hidden rounded-lg border" style={{ border: '1px solid var(--border)' }}>
+                    <div className="flex items-center justify-between px-3 py-1.5" style={{ background: 'var(--surface-secondary)' }}>
+                      <span className="text-[10px] font-medium" style={{ color: 'var(--text-secondary)' }}>pptxgenjs</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(pptx.code);
+                        }}
+                        className="rounded px-2 py-0.5 text-[10px] transition-colors hover:bg-gray-200"
+                        style={{ color: 'var(--text-secondary)' }}
+                      >
+                        コピー
+                      </button>
+                    </div>
+                    <pre className="max-h-64 overflow-auto p-3 text-[11px] leading-relaxed" style={{ background: 'var(--surface)', margin: 0 }}>
+                      <code>{pptx.code}</code>
+                    </pre>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

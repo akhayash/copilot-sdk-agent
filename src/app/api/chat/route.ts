@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
         let unsubMessages: (() => void) | null = null;
         let unsubReasoning: (() => void) | null = null;
         let unsubError: (() => void) | null = null;
+        let keepalive: ReturnType<typeof setInterval> | null = null;
 
         // Build custom tools (scenario tool needs controller for SSE)
         const scenarioTool = createScenarioTool((payload) => {
@@ -75,6 +76,13 @@ export async function POST(req: NextRequest) {
           // Create session
           session = await copilot.createSession(sessionConfig);
 
+          // Keepalive ping to prevent idle timeout
+          keepalive = setInterval(() => {
+            try {
+              controller.enqueue(encoder.encode(': keepalive\n\n'));
+            } catch { /* stream already closed */ }
+          }, 30_000);
+
           // Subscribe to reasoning deltas (thinking)
           unsubReasoning = session.on('assistant.reasoning_delta', (event) => {
             const delta = event.data?.deltaContent ?? '';
@@ -100,18 +108,22 @@ export async function POST(req: NextRequest) {
             controller.enqueue(encoder.encode(`event: error\ndata: ${errorData}\n\n`));
           });
 
-          // Send message and wait for completion (5 min timeout for long code generation)
-          await session.sendAndWait({ prompt }, 300_000);
+          // Send message and wait for completion (10 min timeout)
+          await session.sendAndWait({ prompt }, 600_000);
+
+          clearInterval(keepalive);
 
           // Signal completion
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
         } catch (error) {
+          if (keepalive) clearInterval(keepalive);
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
           const errorData = JSON.stringify({ error: errorMsg });
           controller.enqueue(encoder.encode(`event: error\ndata: ${errorData}\n\n`));
           controller.close();
         } finally {
+          if (keepalive) clearInterval(keepalive);
           unsubMessages?.();
           unsubReasoning?.();
           unsubError?.();
