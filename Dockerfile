@@ -25,9 +25,10 @@ ENV PORT=3000
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/package.json ./package.json
 
-# Fix: reinstall server external packages with npm (resolves pnpm symlink issues)
-RUN cd /app && npm install @github/copilot-sdk @github/copilot --no-save 2>/dev/null || true
+# Fix: replace pnpm node_modules with npm-installed ones
+RUN rm -rf node_modules && npm install --omit=dev
 
 EXPOSE 3000
 CMD ["node", "server.js"]
