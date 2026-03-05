@@ -33,7 +33,7 @@ jobs:
         with:
           resourceGroupName: ${{ env.RESOURCE_GROUP }}
           template: infra/main.bicep
-          parameters: appName=${{ env.APP_NAME }} imageTag=${{ github.sha }}
+          parameters: appName=${{ env.APP_NAME }}
           failOnStdErr: false
 
       - name: Build and push Docker image
