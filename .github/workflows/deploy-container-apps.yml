@@ -52,26 +52,57 @@ jobs:
           docker tag $ACR_SERVER/${{ env.APP_NAME }}:${{ github.sha }} $ACR_SERVER/${{ env.APP_NAME }}:latest
           docker push $ACR_SERVER/${{ env.APP_NAME }}:latest
 
-      - name: Update Container App
+      - name: Deploy Container App
         run: |
-          az containerapp update \
-            --name ca-${{ env.APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image ${{ steps.bicep.outputs.acrLoginServer }}/${{ env.APP_NAME }}:${{ github.sha }} \
-            --set-env-vars \
-              "GITHUB_TOKEN=secretref:github-token" \
-              "TAVILY_API_KEY=secretref:tavily-api-key" \
-              "MODEL_NAME=${{ vars.MODEL_NAME || 'claude-opus-4.6' }}"
+          ACR_SERVER="${{ steps.bicep.outputs.acrLoginServer }}"
+          ACR_NAME="${{ steps.bicep.outputs.acrName }}"
+          ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query "passwords[0].value" -o tsv)
+          ENV_NAME="${{ steps.bicep.outputs.environmentName }}"
 
-      - name: Set secrets in Container App
-        run: |
-          az containerapp secret set \
-            --name ca-${{ env.APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --secrets \
-              "github-token=${{ secrets.APP_GITHUB_TOKEN }}" \
-              "tavily-api-key=${{ secrets.TAVILY_API_KEY }}"
+          # Check if container app exists
+          EXISTS=$(az containerapp show --name ca-${{ env.APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --query name -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$EXISTS" ]; then
+            echo "Creating new Container App..."
+            az containerapp create \
+              --name ca-${{ env.APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --environment $ENV_NAME \
+              --image $ACR_SERVER/${{ env.APP_NAME }}:${{ github.sha }} \
+              --registry-server $ACR_SERVER \
+              --registry-username $(az acr credential show --name $ACR_NAME --query username -o tsv) \
+              --registry-password "$ACR_PASSWORD" \
+              --target-port 3000 \
+              --ingress external \
+              --cpu 0.5 \
+              --memory 1Gi \
+              --min-replicas 0 \
+              --max-replicas 3 \
+              --env-vars \
+                "NODE_ENV=production" \
+                "PORT=3000" \
+                "GITHUB_TOKEN=secretref:github-token" \
+                "TAVILY_API_KEY=secretref:tavily-api-key" \
+                "MODEL_NAME=${{ vars.MODEL_NAME || 'claude-opus-4.6' }}" \
+              --secrets \
+                "github-token=${{ secrets.APP_GITHUB_TOKEN }}" \
+                "tavily-api-key=${{ secrets.TAVILY_API_KEY }}"
+          else
+            echo "Updating existing Container App..."
+            az containerapp secret set \
+              --name ca-${{ env.APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --secrets \
+                "github-token=${{ secrets.APP_GITHUB_TOKEN }}" \
+                "tavily-api-key=${{ secrets.TAVILY_API_KEY }}" 2>/dev/null || true
+
+            az containerapp update \
+              --name ca-${{ env.APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --image $ACR_SERVER/${{ env.APP_NAME }}:${{ github.sha }}
+          fi
 
       - name: Show deployment URL
         run: |
-          echo "🚀 Deployed to: ${{ steps.bicep.outputs.containerAppUrl }}"
+          FQDN=$(az containerapp show --name ca-${{ env.APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --query "properties.configuration.ingress.fqdn" -o tsv)
+          echo "🚀 Deployed to: https://$FQDN"
