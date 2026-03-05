@@ -37,15 +37,5 @@ COPY --from=builder /app/skills ./skills
 RUN rm -rf /app/node_modules
 COPY --from=deps /app/node_modules ./node_modules
 
-# Fix: Turbopack externalizes @github/copilot-sdk as a hashed name.
-# Scan built chunks for hashed package names and create symlinks.
-RUN for hash in $(grep -rohP '@github/copilot-sdk-[a-f0-9]+' /app/.next/server/chunks/ 2>/dev/null | sed 's|@github/||' | sort -u); do \
-      [ -e "/app/node_modules/@github/$hash" ] || ln -s copilot-sdk "/app/node_modules/@github/$hash"; \
-    done && \
-    for hash in $(grep -rohP '@github/copilot-[a-f0-9]+' /app/.next/server/chunks/ 2>/dev/null | grep -v sdk | sed 's|@github/||' | sort -u); do \
-      [ -e "/app/node_modules/@github/$hash" ] || ln -s copilot "/app/node_modules/@github/$hash"; \
-    done && \
-    echo "Symlinks created:" && ls -la /app/node_modules/@github/ | grep '^l'
-
 EXPOSE 3000
 CMD ["node", "server.js"]
