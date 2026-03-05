@@ -14,6 +14,12 @@ COPY . .
 RUN pnpm run setup:icons
 RUN pnpm build
 
+# --- Deps stage: flat node_modules via npm ---
+FROM node:20-slim AS deps
+WORKDIR /app
+COPY package.json ./
+RUN npm install --omit=dev
+
 # --- Runner stage ---
 FROM node:20-slim AS runner
 WORKDIR /app
@@ -21,10 +27,14 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copy standalone output (all deps bundled, no external packages)
+# Copy standalone server + static + public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/skills ./skills
+
+# Replace pnpm node_modules with flat npm ones
+COPY --from=deps /app/node_modules ./node_modules
 
 EXPOSE 3000
 CMD ["node", "server.js"]
