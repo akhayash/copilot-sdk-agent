@@ -27,13 +27,14 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copy standalone server + static + public
+# Copy standalone server + static + public + skills
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/skills ./skills
 
-# Replace pnpm node_modules with flat npm ones
+# Replace standalone's pnpm node_modules with flat npm ones
+RUN rm -rf /app/node_modules
 COPY --from=deps /app/node_modules ./node_modules
 
 EXPOSE 3000
