@@ -9,6 +9,7 @@ import { getCopilotClient } from '@/infrastructure/copilot/client';
 export async function GET() {
   try {
     const copilot = await getCopilotClient();
+    await copilot.start();
     const models = await copilot.listModels();
     return NextResponse.json({ models });
   } catch (error) {

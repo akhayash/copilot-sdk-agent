@@ -15,7 +15,13 @@ export interface ModelOption {
 const DEFAULT_MODELS: ModelOption[] = [
   { id: 'claude-opus-4.6', label: 'Claude Opus 4.6' },
   { id: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
+  { id: 'claude-haiku-4.5', label: 'Claude Haiku 4.5' },
+  { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
+  { id: 'gpt-5.2-codex', label: 'GPT-5.2 Codex' },
+  { id: 'gpt-5.1-codex', label: 'GPT-5.1 Codex' },
   { id: 'gpt-4.1', label: 'GPT-4.1' },
+  { id: 'o3-mini', label: 'o3-mini' },
+  { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro' },
 ];
 
 interface ModelSelectorProps {
