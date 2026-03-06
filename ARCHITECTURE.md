@@ -168,11 +168,104 @@ User: 「PPTX を生成」ボタン or チャットで指示
 |-----------|--------|-----------------|
 | `{"content": "..."}` | `assistant.message_delta` | チャットに逐次表示 |
 | `{"thinking": "..."}` | `assistant.reasoning_delta` | Thinking表示（スクロール可能） |
+| `{"step": {...}}` | ツール・ステップイベント | StepProgress にステップ表示 |
 | `{"scenario": {...}}` | `set_scenario` ツール | 右パネルにシナリオ反映 |
 | `{"slide_update": {...}}` | `update_slide` ツール | 該当スライドのみ更新 |
 | `{"error": "..."}` | エラー時 | エラー表示 |
 | `: keepalive` | 30秒ごと | 無視（idle timeout防止） |
 | `[DONE]` | 完了時 | ストリーム終了 |
+
+### 5. Copilot SDK Session Events（全イベント一覧）
+
+`session.on(eventType, handler)` で購読可能なイベント。`@github/copilot-sdk` v0.1.30 時点。
+
+#### Session ライフサイクル
+
+| イベント | data | 説明 |
+|---------|------|------|
+| `session.start` | `sessionId, version, copilotVersion, selectedModel?, context?` | セッション開始 |
+| `session.resume` | `resumeTime, eventCount, context?` | セッション再開 |
+| `session.idle` | `{}` | アイドル状態（sendAndWait の完了トリガー） |
+| `session.error` | `errorType, message, stack?, statusCode?` | エラー発生 |
+| `session.title_changed` | `title` | セッションタイトル変更 |
+| `session.model_change` | `previousModel?, newModel` | モデル変更 |
+| `session.mode_changed` | `previousMode, newMode` | モード変更 |
+| `session.plan_changed` | `operation: create/update/delete` | プラン変更 |
+| `session.context_changed` | `cwd, gitRoot?, repository?, branch?` | コンテキスト変更 |
+| `session.info` | `infoType, message` | 情報通知 |
+| `session.warning` | `warningType, message` | 警告 |
+| `session.shutdown` | `totalPremiumRequests, modelMetrics, codeChanges, ...` | セッション終了（使用統計含む） |
+| `session.task_complete` | `summary?` | タスク完了 |
+
+#### コンテキスト管理
+
+| イベント | data | 説明 |
+|---------|------|------|
+| `session.truncation` | `tokenLimit, tokensRemoved, messagesRemoved, ...` | トークン切り詰め |
+| `session.compaction_start` | `{}` | コンパクション開始 |
+| `session.compaction_complete` | `success, preCompactionTokens, postCompactionTokens, ...` | コンパクション完了 |
+| `session.usage_info` | `tokenLimit, currentTokens, messagesLength` | 使用状況 |
+| `session.snapshot_rewind` | `upToEventId, eventsRemoved` | スナップショット巻き戻し |
+| `session.workspace_file_changed` | `path, operation: create/update` | ワークスペースファイル変更 |
+
+#### Assistant (AI応答)
+
+| イベント | data | 説明 |
+|---------|------|------|
+| `assistant.turn_start` | `turnId, interactionId?` | **ターン開始** |
+| `assistant.intent` | `intent` | **AIの意図**（ephemeral） |
+| `assistant.reasoning` | `reasoningId, content` | Thinking 全文 |
+| `assistant.reasoning_delta` | `reasoningId, deltaContent` | **Thinking 差分**（ストリーミング） |
+| `assistant.message` | `messageId, content, toolRequests?, ...` | メッセージ全文 |
+| `assistant.message_delta` | `messageId, deltaContent` | **メッセージ差分**（ストリーミング） |
+| `assistant.streaming_delta` | `totalResponseSizeBytes` | ストリーミングサイズ |
+| `assistant.turn_end` | `turnId` | **ターン終了** |
+| `assistant.usage` | `model, inputTokens, outputTokens, cost?, duration?, ...` | トークン使用量 |
+
+#### ツール実行
+
+| イベント | data | 説明 |
+|---------|------|------|
+| `tool.user_requested` | `toolCallId, toolName, arguments?` | ユーザーによるツール要求 |
+| `tool.execution_start` | `toolCallId, toolName, arguments?, mcpServerName?, mcpToolName?` | **ツール実行開始** |
+| `tool.execution_progress` | `toolCallId, progressMessage` | 実行中の進捗メッセージ |
+| `tool.execution_partial_result` | `toolCallId, partialOutput` | 部分結果（ephemeral） |
+| `tool.execution_complete` | `toolCallId, success, result?, error?` | **ツール実行完了** |
+
+`result` には `content` (テキスト), `contents[]` (text/terminal/image/audio/resource_link/resource) が含まれる。
+
+#### スキル・サブエージェント
+
+| イベント | data | 説明 |
+|---------|------|------|
+| `skill.invoked` | `name, path, content, allowedTools?` | **スキル呼び出し** |
+| `subagent.started` | `toolCallId, agentName, agentDisplayName, agentDescription` | サブエージェント開始 |
+| `subagent.completed` | `toolCallId, agentName, agentDisplayName` | サブエージェント完了 |
+| `subagent.failed` | `toolCallId, agentName, error` | サブエージェント失敗 |
+| `subagent.selected` | `agentName, agentDisplayName, tools` | サブエージェント選択 |
+| `subagent.deselected` | `{}` | サブエージェント解除 |
+
+#### フック・システム
+
+| イベント | data | 説明 |
+|---------|------|------|
+| `hook.start` | `hookInvocationId, hookType, input?` | フック開始 |
+| `hook.end` | `hookInvocationId, hookType, output?, success, error?` | フック終了 |
+| `system.message` | `content, role: system/developer, name?` | システムメッセージ |
+| `user.message` | `content, attachments?, source?, agentMode?` | ユーザーメッセージ |
+| `abort` | `reason` | 中断 |
+
+#### 現在アプリで購読しているイベント（太字は SSE で配信中）
+
+- **`assistant.message_delta`** → `{"content": "..."}`
+- **`assistant.reasoning_delta`** → `{"thinking": "..."}`
+- **`session.error`** → `{"error": "..."}`
+- **`assistant.turn_start`** → `{"step": {"type": "turn_start"}}`
+- **`assistant.turn_end`** → `{"step": {"type": "turn_end"}}`
+- **`assistant.intent`** → `{"step": {"type": "intent", "name": "..."}}`
+- **`tool.execution_start`** → `{"step": {"type": "tool_start", "name": "..."}}`
+- **`tool.execution_complete`** → `{"step": {"type": "tool_end", "name": "..."}}`
+- **`skill.invoked`** → `{"step": {"type": "skill", "name": "..."}}`
 
 ## API Routes
 
