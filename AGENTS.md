@@ -95,3 +95,10 @@ AIはスライド構成をチャットに書かず、`set_scenario` ツールで
 - File uploads are validated server-side (type, size limits).
 - PPTX is generated in memory — no temp files on disk.
 - AI生成コードは `new Function()` で実行（pptxgenjs スコープに限定）。
+
+## Development Workflow
+
+- **ブランチ運用**: 変更は `feat/xxx` や `fix/xxx` ブランチで作業し、PR 経由で master にマージする。master に直接 push しない。
+- **ローカルテスト**: push 前に `pnpm build` でビルド確認する。API 変更は `pnpm dev` でローカル動作確認してから push。
+- **デプロイ**: master マージで GitHub Actions が自動実行（Bicep → Docker build → ACR push → Container App update）。
+- **コミットメッセージ**: Conventional Commits 形式（`feat:`, `fix:`, `chore:`, `docs:`）。末尾に `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>` を付ける。
