@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
         let unsubMessages: (() => void) | null = null;
         let unsubReasoning: (() => void) | null = null;
         let unsubError: (() => void) | null = null;
+        let unsubSteps: (() => void)[] = [];
         let keepalive: ReturnType<typeof setInterval> | null = null;
 
         // Build custom tools (scenario tool needs controller for SSE)
@@ -108,6 +109,39 @@ export async function POST(req: NextRequest) {
             controller.enqueue(encoder.encode(`event: error\ndata: ${errorData}\n\n`));
           });
 
+          // Subscribe to step progress events
+          const emitStep = (step: { type: string; name?: string; args?: unknown; result?: string }) => {
+            const data = JSON.stringify({ step });
+            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          };
+
+          unsubSteps.push(session.on('assistant.intent', (event) => {
+            emitStep({ type: 'intent', name: (event.data as { intent?: string })?.intent });
+          }));
+
+          unsubSteps.push(session.on('tool.execution_start', (event) => {
+            const d = event.data as { toolName?: string; arguments?: unknown };
+            emitStep({ type: 'tool_start', name: d?.toolName, args: d?.arguments });
+          }));
+
+          unsubSteps.push(session.on('tool.execution_complete', (event) => {
+            const d = event.data as { toolName?: string };
+            emitStep({ type: 'tool_end', name: d?.toolName });
+          }));
+
+          unsubSteps.push(session.on('skill.invoked', (event) => {
+            const d = event.data as { skillName?: string };
+            emitStep({ type: 'skill', name: d?.skillName });
+          }));
+
+          unsubSteps.push(session.on('assistant.turn_start', () => {
+            emitStep({ type: 'turn_start' });
+          }));
+
+          unsubSteps.push(session.on('assistant.turn_end', () => {
+            emitStep({ type: 'turn_end' });
+          }));
+
           // Send message and wait for completion (10 min timeout)
           await session.sendAndWait({ prompt }, 600_000);
 
@@ -127,6 +161,7 @@ export async function POST(req: NextRequest) {
           unsubMessages?.();
           unsubReasoning?.();
           unsubError?.();
+          unsubSteps.forEach((u) => u?.());
           if (session) {
             await session.destroy();
           }

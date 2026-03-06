@@ -10,6 +10,7 @@ import { Star, PanelRightOpen, PanelRightClose } from 'lucide-react';
 import { MessageList } from './message-list';
 import { MessageInput } from './message-input';
 import { ModelSelector } from './model-selector';
+import { StepProgress } from './step-progress';
 import { SlidePanel } from '@/app/components/slides/slide-panel';
 import type { Message, Attachment } from '@/domain/entities/message';
 import type { SlideWork, SlideItem, SlideLayout } from '@/domain/entities/slide-work';
@@ -36,6 +37,7 @@ export function ChatContainer() {
   const [slideWork, setSlideWork] = useState<SlideWork>({ phase: 'empty', story: null, slides: [], pptx: null, thinking: null, isStreaming: false });
   const [panelOpen, setPanelOpen] = useState(true);
   const [scenarioTitle, setScenarioTitle] = useState<string>('Presentation');
+  const [steps, setSteps] = useState<{ type: string; name?: string; time: number }[]>([]);
 
   const handleSendMessage = async (text: string, attachments?: Attachment[]) => {
     const userMessage: Message = {
@@ -75,6 +77,7 @@ export function ChatContainer() {
         metadata: { streaming: true },
       }]);
       setSlideWork((prev) => ({ ...prev, isStreaming: true, thinking: null }));
+      setSteps([]);
 
       if (reader) {
         while (true) {
@@ -95,6 +98,10 @@ export function ChatContainer() {
                 if (parsed.error) throw new Error(parsed.error);
                 if (parsed.thinking) { thinkingContent += parsed.thinking; updated = true; }
                 if (parsed.content) { assistantContent += parsed.content; updated = true; }
+                if (parsed.step) {
+                  setSteps((prev) => [...prev, { ...parsed.step, time: Date.now() }]);
+                  updated = true;
+                }
                 if (parsed.scenario) {
                   // Scenario tool called — populate right panel directly
                   const { title, slides } = parsed.scenario;
@@ -240,6 +247,7 @@ export function ChatContainer() {
           <main className="flex-1 overflow-hidden">
             <MessageList messages={messages} isLoading={isLoading} />
           </main>
+          {isLoading && <StepProgress steps={steps} isStreaming={isLoading} />}
           <footer className="border-t" style={{ borderColor: 'var(--border)' }}>
             <MessageInput onSend={handleSendMessage} disabled={isLoading} />
           </footer>
