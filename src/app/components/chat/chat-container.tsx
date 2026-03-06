@@ -9,7 +9,7 @@ import React, { useState } from 'react';
 import { Star, PanelRightOpen, PanelRightClose } from 'lucide-react';
 import { MessageList } from './message-list';
 import { MessageInput } from './message-input';
-import { ModelSelector, AVAILABLE_MODELS } from './model-selector';
+import { ModelSelector } from './model-selector';
 import { SlidePanel } from '@/app/components/slides/slide-panel';
 import type { Message, Attachment } from '@/domain/entities/message';
 import type { SlideWork, SlideItem, SlideLayout } from '@/domain/entities/slide-work';
@@ -32,7 +32,7 @@ function detectPptxCode(content: string) {
 export function ChatContainer() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
+  const [selectedModel, setSelectedModel] = useState(process.env.NEXT_PUBLIC_DEFAULT_MODEL || 'claude-opus-4.6');
   const [slideWork, setSlideWork] = useState<SlideWork>({ phase: 'empty', story: null, slides: [], pptx: null, thinking: null, isStreaming: false });
   const [panelOpen, setPanelOpen] = useState(true);
   const [scenarioTitle, setScenarioTitle] = useState<string>('Presentation');
