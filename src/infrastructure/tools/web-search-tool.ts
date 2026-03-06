@@ -14,7 +14,12 @@ interface TavilyResult {
   score: number;
 }
 
-async function searchTavily(query: string): Promise<TavilyResult[]> {
+interface TavilyResponse {
+  results: TavilyResult[];
+  answer?: string;
+}
+
+async function searchTavily(query: string): Promise<TavilyResponse> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) {
     throw new Error('TAVILY_API_KEY environment variable is not set');
@@ -26,9 +31,9 @@ async function searchTavily(query: string): Promise<TavilyResult[]> {
     body: JSON.stringify({
       api_key: apiKey,
       query,
-      max_results: 5,
+      max_results: 10,
       include_answer: true,
-      search_depth: 'basic',
+      search_depth: 'advanced',
     }),
   });
 
@@ -37,12 +42,14 @@ async function searchTavily(query: string): Promise<TavilyResult[]> {
   }
 
   const data = await res.json();
-  return data.results ?? [];
+  return { results: data.results ?? [], answer: data.answer };
 }
 
 export const webSearchTool = defineTool('web_search', {
   description:
-    'Search the web for up-to-date information. Use this to gather facts, data, and references for creating presentations or answering questions that need current information.',
+    'Search the web for up-to-date information. Returns up to 10 detailed results. ' +
+    'Call this tool MULTIPLE TIMES with different queries to gather comprehensive information. ' +
+    'For presentations, search for: 1) official docs/specs, 2) market data/statistics, 3) use cases/case studies.',
   parameters: {
     type: 'object',
     properties: {
@@ -55,14 +62,14 @@ export const webSearchTool = defineTool('web_search', {
   },
   handler: async (args: { query: string }) => {
     try {
-      const results = await searchTavily(args.query);
+      const { results, answer } = await searchTavily(args.query);
       if (results.length === 0) {
         return { message: `No results found for "${args.query}"` };
       }
       const formatted = results
-        .map((r, i) => `[${i + 1}] ${r.title}\n    ${r.url}\n    ${r.content}`)
+        .map((r, i) => `[${i + 1}] ${r.title}\n    URL: ${r.url}\n    ${r.content}`)
         .join('\n\n');
-      return { results: formatted, count: results.length };
+      return { results: formatted, count: results.length, ...(answer ? { answer } : {}) };
     } catch (error) {
       return { error: error instanceof Error ? error.message : 'Search failed' };
     }
