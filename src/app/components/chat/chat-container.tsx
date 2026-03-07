@@ -5,17 +5,19 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Star, PanelRightOpen, PanelRightClose } from 'lucide-react';
 import { MessageList } from './message-list';
 import { MessageInput } from './message-input';
-import { ModelSelector } from './model-selector';
+import { ModelSelector, type ModelOption, type ReasoningEffortOption } from './model-selector';
+import { ReasoningEffortSelector } from './reasoning-effort-selector';
 import { SlidePanel } from '@/app/components/slides/slide-panel';
 import type { Message, Attachment } from '@/domain/entities/message';
 import type { SlideWork, SlideItem, SlideLayout } from '@/domain/entities/slide-work';
 
 const ACCENT_CYCLE: SlideItem['accent'][] = ['blue', 'green', 'purple', 'teal', 'orange'];
 const VALID_LAYOUTS: SlideLayout[] = ['title', 'agenda', 'section', 'bullets', 'cards', 'stats', 'comparison', 'timeline', 'diagram', 'summary'];
+const DEFAULT_REASONING_EFFORTS: ReasoningEffortOption[] = ['low', 'medium', 'high'];
 
 function detectPptxCode(content: string) {
   const match = content.match(/```(?:javascript|js)\s*([\s\S]*?)\s*```/);
@@ -33,9 +35,35 @@ export function ChatContainer() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState(process.env.NEXT_PUBLIC_DEFAULT_MODEL || 'claude-opus-4.6');
+  const [selectedModelInfo, setSelectedModelInfo] = useState<ModelOption | null>(null);
+  const [selectedReasoningEffort, setSelectedReasoningEffort] = useState<ReasoningEffortOption>('medium');
   const [slideWork, setSlideWork] = useState<SlideWork>({ phase: 'empty', story: null, slides: [], pptx: null, thinking: null, isStreaming: false });
   const [panelOpen, setPanelOpen] = useState(true);
   const [scenarioTitle, setScenarioTitle] = useState<string>('Presentation');
+
+  const selectedModelMetadata = selectedModelInfo?.id === selectedModel ? selectedModelInfo : null;
+  const supportsReasoningEffort = selectedModelMetadata?.supportsReasoningEffort ?? false;
+  const supportedReasoningEfforts = useMemo(
+    () => (selectedModelMetadata?.supportedReasoningEfforts?.length
+      ? selectedModelMetadata.supportedReasoningEfforts
+      : (supportsReasoningEffort ? DEFAULT_REASONING_EFFORTS : [])),
+    [selectedModelMetadata, supportsReasoningEffort],
+  );
+
+  useEffect(() => {
+    if (!supportsReasoningEffort || supportedReasoningEfforts.length === 0) return;
+
+    const preferredEffort = selectedModelMetadata?.defaultReasoningEffort;
+    const nextEffort = supportedReasoningEfforts.includes(selectedReasoningEffort)
+      ? selectedReasoningEffort
+      : (preferredEffort && supportedReasoningEfforts.includes(preferredEffort)
+          ? preferredEffort
+          : supportedReasoningEfforts[0]);
+
+    if (nextEffort !== selectedReasoningEffort) {
+      setSelectedReasoningEffort(nextEffort);
+    }
+  }, [selectedModelMetadata, selectedReasoningEffort, supportedReasoningEfforts, supportsReasoningEffort]);
 
   const handleSendMessage = async (text: string, attachments?: Attachment[]) => {
     const userMessage: Message = {
@@ -58,7 +86,12 @@ export function ChatContainer() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history: history.slice(0, -1), model: selectedModel }),
+        body: JSON.stringify({
+          message: text,
+          history: history.slice(0, -1),
+          model: selectedModel,
+          ...(supportsReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {}),
+        }),
       });
 
       if (!response.ok) throw new Error(`Server error: ${response.status}`);
@@ -221,7 +254,20 @@ export function ChatContainer() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <ModelSelector value={selectedModel} onChange={setSelectedModel} disabled={isLoading} />
+          <ModelSelector
+            value={selectedModel}
+            onChange={setSelectedModel}
+            onSelectedModelChange={setSelectedModelInfo}
+            disabled={isLoading}
+          />
+          {supportsReasoningEffort && supportedReasoningEfforts.length > 0 && (
+            <ReasoningEffortSelector
+              value={selectedReasoningEffort}
+              options={supportedReasoningEfforts}
+              onChange={setSelectedReasoningEffort}
+              disabled={isLoading}
+            />
+          )}
           <button
             onClick={() => setPanelOpen(!panelOpen)}
             className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-gray-100"
