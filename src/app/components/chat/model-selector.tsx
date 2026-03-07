@@ -57,6 +57,7 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
+      suppressHydrationWarning
       className="cursor-pointer appearance-none rounded-lg border px-3 py-1.5 pr-8 text-sm font-medium transition-colors hover:border-gray-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
       style={{
         background: 'var(--surface)',
