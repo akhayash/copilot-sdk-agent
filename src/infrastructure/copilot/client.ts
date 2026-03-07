@@ -24,20 +24,32 @@ export async function getCopilotClient(): Promise<CopilotClient> {
  * Session options for createSession()
  * Supports three paths: GitHub default, GitHub specific model, or Azure BYOM
  */
-export async function getSessionOptions(opts?: { streaming?: boolean; model?: string }): Promise<Partial<SessionConfig>> {
+export async function getSessionOptions(opts?: {
+  streaming?: boolean;
+  model?: string;
+  reasoningEffort?: SessionConfig['reasoningEffort'];
+}): Promise<Partial<SessionConfig>> {
   const provider = process.env.MODEL_PROVIDER;
   // Explicit model from request takes priority, then env var
   const modelName = opts?.model || process.env.MODEL_NAME;
   const streaming = opts?.streaming ?? false;
+  const reasoningEffort = opts?.reasoningEffort;
 
   // Path 1: GitHub default (no env vars)
   if (!provider && !modelName) {
-    return { streaming };
+    return {
+      streaming,
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+    };
   }
 
   // Path 2: GitHub specific model
   if (!provider) {
-    return { model: modelName, streaming };
+    return {
+      model: modelName,
+      streaming,
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+    };
   }
 
   // Path 3: Azure BYOM
@@ -58,6 +70,7 @@ export async function getSessionOptions(opts?: { streaming?: boolean; model?: st
     return {
       model: modelName,
       streaming,
+      ...(reasoningEffort ? { reasoningEffort } : {}),
       provider: {
         type: 'azure',
         baseUrl: endpoint.replace(/\/$/, ''),

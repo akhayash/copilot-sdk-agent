@@ -12,20 +12,32 @@ import { createScenarioTool, createUpdateSlideTool } from '@/infrastructure/tool
 import type { SessionConfig } from '@github/copilot-sdk';
 import { approveAll } from '@github/copilot-sdk';
 
+type ReasoningEffort = NonNullable<SessionConfig['reasoningEffort']>;
+
+const VALID_REASONING_EFFORTS: readonly ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh'];
+
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return typeof value === 'string' && VALID_REASONING_EFFORTS.includes(value as ReasoningEffort);
+}
+
 interface ChatRequest {
   message: string;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   model?: string;
+  reasoningEffort?: ReasoningEffort;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as ChatRequest;
-    const { message, history, model } = body;
+    const { message, history, model, reasoningEffort } = body;
 
     // Validate input
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return NextResponse.json({ error: 'Message is required and must be non-empty' }, { status: 400 });
+    }
+    if (reasoningEffort && !isReasoningEffort(reasoningEffort)) {
+      return NextResponse.json({ error: 'Invalid reasoning effort' }, { status: 400 });
     }
 
     // Build prompt
@@ -33,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     // Initialize copilot client
     const copilot = await getCopilotClient();
-    const sessionOpts = await getSessionOptions({ streaming: true, model });
+    const sessionOpts = await getSessionOptions({ streaming: true, model, reasoningEffort });
     // Create streaming response
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
