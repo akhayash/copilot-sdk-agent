@@ -39,6 +39,7 @@ export function ChatContainer() {
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState<ReasoningEffortOption>('medium');
   const [slideWork, setSlideWork] = useState<SlideWork>({ phase: 'empty', story: null, slides: [], pptx: null, thinking: null, isStreaming: false });
   const [panelOpen, setPanelOpen] = useState(true);
+  const [mobileView, setMobileView] = useState<'chat' | 'scenario'>('chat');
   const [scenarioTitle, setScenarioTitle] = useState<string>('Presentation');
 
   const selectedModelMetadata = selectedModelInfo?.id === selectedModel ? selectedModelInfo : null;
@@ -151,6 +152,7 @@ export function ChatContainer() {
                     slides: slideItems,
                     pptx: null,
                   }));
+                  setMobileView('scenario');
                   if (!panelOpen) setPanelOpen(true);
                   updated = true;
                 }
@@ -178,6 +180,7 @@ export function ChatContainer() {
                         : [...prev.slides, updatedSlide].sort((a, b) => a.number - b.number),
                     };
                   });
+                  setMobileView('scenario');
                   updated = true;
                 }
               } catch (e) {
@@ -198,6 +201,7 @@ export function ChatContainer() {
               // Use scenario title instead of unreliable code extraction
               pptx.title = scenarioTitle;
               setSlideWork((prev) => ({ ...prev, phase: 'ready', pptx }));
+              setMobileView('scenario');
               if (!panelOpen) setPanelOpen(true);
             }
 
@@ -228,6 +232,7 @@ export function ChatContainer() {
       if (pptx) {
         pptx.title = scenarioTitle;
         setSlideWork((prev) => ({ ...prev, phase: 'ready', pptx }));
+        setMobileView('scenario');
       }
     } catch (error) {
       setMessages([...newMessages, {
@@ -243,17 +248,20 @@ export function ChatContainer() {
   return (
     <div className="flex h-screen flex-col" style={{ background: 'var(--background)' }}>
       {/* Header */}
-      <header className="flex items-center justify-between border-b px-4 py-2.5" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+      <header
+        className="flex flex-col gap-3 border-b px-3 py-3 sm:px-4 md:flex-row md:items-center md:justify-between md:gap-4 md:py-2.5"
+        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      >
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg text-white" style={{ background: 'var(--accent)' }}>
             <Star size={16} fill="currentColor" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Copilot SDK Agent</h1>
             <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>AI Presentation Generator</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 md:justify-end">
           <ModelSelector
             value={selectedModel}
             onChange={setSelectedModel}
@@ -270,19 +278,49 @@ export function ChatContainer() {
           )}
           <button
             onClick={() => setPanelOpen(!panelOpen)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-gray-100"
+            className="hidden h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-gray-100 md:flex"
             style={{ color: 'var(--text-secondary)' }}
             title={panelOpen ? 'パネルを閉じる' : 'パネルを開く'}
           >
             {panelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
           </button>
         </div>
+
+        <div className="grid grid-cols-2 gap-2 md:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileView('chat')}
+            className="rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+            style={{
+              background: mobileView === 'chat' ? 'var(--accent-light)' : 'var(--surface-secondary)',
+              color: mobileView === 'chat' ? 'var(--accent)' : 'var(--text-secondary)',
+            }}
+          >
+            チャット
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileView('scenario')}
+            className="rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+            style={{
+              background: mobileView === 'scenario' ? 'var(--accent-light)' : 'var(--surface-secondary)',
+              color: mobileView === 'scenario' ? 'var(--accent)' : 'var(--text-secondary)',
+            }}
+          >
+            シナリオ{slideWork.slides.length > 0 ? ` (${slideWork.slides.length})` : ''}
+          </button>
+        </div>
       </header>
 
       {/* Two-pane body */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
         {/* Chat pane — narrower when panel open to give workspace more room */}
-        <div className={`flex flex-col ${panelOpen ? 'w-[35%] min-w-[320px] border-r' : 'w-full'}`} style={{ borderColor: 'var(--border)' }}>
+        <div
+          className={`${mobileView === 'chat' ? 'flex' : 'hidden'} min-h-0 flex-1 flex-col md:flex ${
+            panelOpen ? 'md:w-[35%] md:min-w-[320px] md:border-r' : 'md:w-full'
+          }`}
+          style={{ borderColor: 'var(--border)' }}
+        >
           <main className="flex-1 overflow-hidden">
             <MessageList messages={messages} isLoading={isLoading} />
           </main>
@@ -292,18 +330,19 @@ export function ChatContainer() {
         </div>
 
         {/* Slide panel — takes remaining space */}
-        {panelOpen && (
-          <div className="flex-1" style={{ background: 'var(--background)' }}>
-            <SlidePanel
-              slideWork={slideWork}
-              onRequestGenerate={() => {
-                if (!isLoading) {
-                  handleSendMessage('このシナリオの内容でPPTXを生成してください。');
-                }
-              }}
-            />
-          </div>
-        )}
+        <div
+          className={`${mobileView === 'scenario' ? 'flex' : 'hidden'} min-h-0 flex-1 ${panelOpen ? 'md:flex' : 'md:hidden'}`}
+          style={{ background: 'var(--background)' }}
+        >
+          <SlidePanel
+            slideWork={slideWork}
+            onRequestGenerate={() => {
+              if (!isLoading) {
+                handleSendMessage('このシナリオの内容でPPTXを生成してください。');
+              }
+            }}
+          />
+        </div>
       </div>
     </div>
   );

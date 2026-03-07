@@ -66,13 +66,13 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
   if (slides.length === 0 && phase !== 'ready') {
     return (
       <div className="flex h-full flex-col overflow-hidden">
-        <div className="flex items-center gap-2 border-b px-4 py-2.5" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex items-center gap-2 border-b px-3 py-3 sm:px-4 md:py-2.5" style={{ borderColor: 'var(--border)' }}>
           <Layers size={15} className={isStreaming ? 'thinking-pulse' : ''} style={{ color: isStreaming ? 'var(--accent)' : 'var(--border)' }} />
           <span className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
             {isStreaming ? 'シナリオ — 生成中...' : 'シナリオ'}
           </span>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-3">
+        <div className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
           {[1, 2, 3, 4, 5].map((n) => (
             <div key={n} className="mb-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
               <div className="flex items-center gap-2">
@@ -96,10 +96,10 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Panel header */}
-      <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: 'var(--border)' }}>
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2 border-b px-3 py-3 sm:px-4 md:flex-row md:items-center md:justify-between md:py-2.5" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex min-w-0 items-center gap-2">
           <Layers size={15} style={{ color: 'var(--accent)' }} />
-          <span className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
+          <span className="truncate text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
             {pptx ? pptx.title : slides.length > 0 ? 'シナリオ' : 'ワークスペース'}
           </span>
           {slides.length > 0 && (
@@ -108,7 +108,7 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {slides.length > 0 && !pptx && onRequestGenerate && (
             <button
               onClick={onRequestGenerate}
@@ -161,16 +161,16 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
                 style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
               >
                 {/* Slide header */}
-                <div className="flex items-start gap-3 px-4 py-3">
+                <div className="flex items-start gap-3 px-3 py-3 sm:px-4">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white" style={{ background: 'var(--accent)' }}>
                     {slide.number}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <span className="text-sm font-bold leading-snug" style={{ color: 'var(--foreground)' }}>
                         {slide.title}
                       </span>
-                      <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                         {slide.icon && (
                           <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}>
                             🎨 {slide.icon}
@@ -191,9 +191,9 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
                 </div>
 
                 {/* Content — always fully visible */}
-                <div className="border-t px-4 pb-3 pt-2.5" style={{ borderColor: 'var(--border)' }}>
+                <div className="border-t px-3 pb-3 pt-2.5 sm:px-4" style={{ borderColor: 'var(--border)' }}>
                   {slide.bullets.length > 0 && (
-                    <div className="space-y-1 pl-10">
+                    <div className="space-y-1 pl-1 sm:pl-10">
                       {slide.bullets.map((b, i) => (
                         <p key={i} className="text-[13px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                           <span style={{ color: 'var(--accent)', marginRight: 6 }}>•</span>{b}
@@ -201,7 +201,7 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
                       ))}
                     </div>
                   )}
-                  <div className="mt-3 rounded-lg border p-3 pl-10" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
+                  <div className="mt-3 rounded-lg border p-3 sm:pl-10" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
                     <div className="mb-1.5 flex items-center gap-1.5">
                       <MessageSquare size={12} style={{ color: 'var(--text-secondary)' }} />
                       <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>スピーカーノート</span>
@@ -218,7 +218,7 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
         {pptx && (
           <div className="px-3 pb-3">
             <div className="rounded-xl border p-4" style={{ borderColor: 'var(--accent)', background: 'var(--accent-light)' }}>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                   <Presentation size={20} style={{ color: 'var(--accent)' }} />
                   <div>

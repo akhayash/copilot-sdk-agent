@@ -34,7 +34,7 @@ export function ReasoningEffortSelector({
       disabled={disabled}
       suppressHydrationWarning
       aria-label="Reasoning effort"
-      className="cursor-pointer appearance-none rounded-lg border px-3 py-1.5 pr-8 text-sm font-medium transition-colors hover:border-gray-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+      className="w-full min-w-0 cursor-pointer appearance-none rounded-lg border px-3 py-1.5 pr-8 text-sm font-medium transition-colors hover:border-gray-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
       style={{
         background: 'var(--surface)',
         borderColor: 'var(--border)',
