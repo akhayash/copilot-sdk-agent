@@ -4,11 +4,17 @@
  */
 
 import type { Message, Attachment, ChatHistory } from '../domain/entities/message';
+import type { DesignBrief, SlideItem } from '../domain/entities/slide-work';
 
 export interface ChatRequest {
   message: string;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   attachments?: Attachment[];
+  workspace?: {
+    title: string;
+    slides: SlideItem[];
+    designBrief: DesignBrief | null;
+  };
 }
 
 export interface ChatResponse {
@@ -71,8 +77,35 @@ Always wrap JSON output in a code block with \`\`\`json markers.`;
   static buildPrompt(
     message: string,
     history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    workspace?: {
+      title: string;
+      slides: SlideItem[];
+      designBrief: DesignBrief | null;
+    },
   ): string {
     const historyLines = history ? history.map((m) => `${m.role}: ${m.content}`).join('\n') : '';
-    return historyLines ? `${historyLines}\n\nuser: ${message}` : message;
+    const workspaceContext = workspace && (workspace.slides.length > 0 || workspace.designBrief)
+      ? [
+          'approved-workspace:',
+          '```json',
+          JSON.stringify({
+            title: workspace.title,
+            designBrief: workspace.designBrief,
+            slides: workspace.slides.map((slide) => ({
+              number: slide.number,
+              title: slide.title,
+              keyMessage: slide.keyMessage,
+              layout: slide.layout,
+              bullets: slide.bullets,
+              notes: slide.notes,
+              icon: slide.icon,
+            })),
+          }, null, 2),
+          '```',
+          'Use this approved workspace as the current presentation source of truth. You may reinterpret layout hints creatively when generating PPTX, but preserve the core story unless the user asks to change it.',
+        ].join('\n')
+      : '';
+
+    return [historyLines, workspaceContext, `user: ${message}`].filter(Boolean).join('\n\n');
   }
 }

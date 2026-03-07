@@ -23,7 +23,7 @@ interface SlidePanelProps {
 }
 
 export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
-  const { phase, slides, story, pptx, isStreaming } = slideWork;
+  const { phase, slides, story, designBrief, pptx, isStreaming } = slideWork;
   const [showCode, setShowCode] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
@@ -150,6 +150,45 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
         {story?.intro && (
           <div className="prose prose-sm border-b px-4 py-3 text-xs" style={{ borderColor: 'var(--border)' }}>
             <Markdown remarkPlugins={[remarkGfm]}>{story.intro}</Markdown>
+          </div>
+        )}
+
+        {designBrief && (
+          <div className="border-b px-3 py-3 sm:px-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+            <div className="mb-2 flex items-center gap-2">
+              <Sparkles size={14} style={{ color: 'var(--accent)' }} />
+              <span className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>デザイン方針</span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {[
+                ['目的', designBrief.objective],
+                ['対象', designBrief.audience],
+                ['トーン', designBrief.tone],
+                ['ビジュアル', designBrief.visualStyle],
+                ['配色ムード', designBrief.colorMood],
+                ['情報密度', designBrief.density],
+                ['構図方針', designBrief.layoutApproach],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
+                  <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>{label}</div>
+                  <div className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--foreground)' }}>{value}</div>
+                </div>
+              ))}
+            </div>
+            {designBrief.directions.length > 0 && (
+              <div className="mt-3 rounded-lg border px-3 py-2.5" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                  デザイン指示
+                </div>
+                <ul className="space-y-1">
+                  {designBrief.directions.map((direction) => (
+                    <li key={direction} className="text-xs leading-relaxed" style={{ color: 'var(--foreground)' }}>
+                      <span style={{ color: 'var(--accent)', marginRight: 6 }}>•</span>{direction}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 

@@ -68,6 +68,16 @@ F.EN  // 'Segoe UI'     — 英数字・ヘッダー
 
 ## デザインガイドライン
 
+## Design-led generation rules
+
+- `set_scenario` で承認された **story と designBrief を最優先の入力**として扱う
+- 各スライドの `layout` / `icon` は **固定命令ではなく creative hint** とみなす
+- 全体のリズム、余白、視線誘導、情報階層が改善されるなら、レイアウトを積極的に再解釈してよい
+- 連続するスライドで同じ構図が続く場合は、意図的にメリハリをつける
+- ユーザーが承認したストーリーの主張は維持しつつ、見せ方はより大胆に設計してよい
+- `designBrief.layoutApproach` が `design-led` の場合、ストーリーを壊さない範囲で最も表現力の高い構図を選ぶ
+- `designBrief.layoutApproach` が `structured` の場合、scenario の layout を比較的強く尊重する
+
 ### アイコンの使用（重要）
 
 `public/icons/` に 64x64 PNG アイコンが用意されている。**積極的に使用すること。**
@@ -99,10 +109,10 @@ slide.addImage({
 ### シナリオとの連動
 
 `set_scenario` ツールで事前にシナリオが設定されている場合:
-- シナリオの `title`, `keyMessage`, `layout`, `icon` に従ってスライドを生成する
+- シナリオの `title`, `keyMessage`, `layout`, `icon` を参照してスライドを生成する
 - `keyMessage` をスライドのメインタイトル（大きな文字）として使用する
-- `layout` に対応するレイアウトパターンを適用する
-- `icon` で指定されたアイコンを `public/icons/{icon}.png` で配置する
+- `layout` はそのまま適用してもよいが、designBrief や全体の流れに合わせて再解釈してよい
+- `icon` で指定されたアイコンは優先候補としつつ、不要なら無理に使わなくてもよい
 
 ### フォントサイズ
 

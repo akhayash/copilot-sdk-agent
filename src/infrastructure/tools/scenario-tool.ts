@@ -16,9 +16,21 @@ export interface ScenarioSlide {
   icon?: string;
 }
 
+export interface ScenarioDesignBrief {
+  objective: string;
+  audience: string;
+  tone: string;
+  visualStyle: string;
+  colorMood: string;
+  density: string;
+  layoutApproach: string;
+  directions: string[];
+}
+
 export interface ScenarioPayload {
   title: string;
   slides: ScenarioSlide[];
+  designBrief?: ScenarioDesignBrief;
 }
 
 /**
@@ -31,8 +43,10 @@ export function createScenarioTool(
   return defineTool('set_scenario', {
     description:
       'Set the slide scenario (outline) for the presentation workspace panel. ' +
-      'Each slide must have a keyMessage (the "so what" / key takeaway), a layout type, and optionally an icon. ' +
+      'Each slide must have a keyMessage (the "so what" / key takeaway), a layout hint, and optionally an icon hint. ' +
       'Available layouts: title, agenda, section, bullets, cards, stats, comparison, timeline, diagram, summary. ' +
+      'The layout and icon are guidance for the later PPTX design step, not a rigid rendering contract. ' +
+      'When helpful, include a designBrief describing tone, audience, visual style, density, and layout approach. ' +
       'Available icons: arrow-trending-up, brain, building, calendar, chart, checkmark-circle, cloud, code, data-trending, document, globe, lightbulb, link, lock-closed, money, people-team, rocket, search, settings, shield, sparkle, star, target, warning.',
     parameters: {
       type: 'object' as const,
@@ -52,7 +66,7 @@ export function createScenarioTool(
               keyMessage: { type: 'string', description: 'The "so what" — the single key takeaway this slide must communicate to the audience' },
               layout: {
                 type: 'string',
-                description: 'Layout type: title, agenda, section, bullets, cards, stats, comparison, timeline, diagram, summary',
+                description: 'Preferred layout direction for later design exploration: title, agenda, section, bullets, cards, stats, comparison, timeline, diagram, summary',
               },
               bullets: {
                 type: 'array',
@@ -65,11 +79,30 @@ export function createScenarioTool(
               },
               icon: {
                 type: 'string',
-                description: 'Icon name from available set (e.g. brain, cloud, rocket)',
+                description: 'Optional icon hint from available set (e.g. brain, cloud, rocket)',
               },
             },
             required: ['number', 'title', 'keyMessage', 'layout', 'bullets', 'notes'],
           },
+        },
+        designBrief: {
+          type: 'object',
+          description: 'Optional presentation-wide design intent that guides PPTX generation while leaving room for creative layout decisions.',
+          properties: {
+            objective: { type: 'string', description: 'What the presentation should feel like strategically or emotionally' },
+            audience: { type: 'string', description: 'Primary audience from a design perspective' },
+            tone: { type: 'string', description: 'Tone such as executive, bold, premium, playful, analytical' },
+            visualStyle: { type: 'string', description: 'Visual metaphor or art direction, e.g. editorial cards, minimalist dashboard, keynote-style hero visuals' },
+            colorMood: { type: 'string', description: 'Preferred color mood or contrast profile' },
+            density: { type: 'string', description: 'Desired information density, e.g. airy, balanced, dense' },
+            layoutApproach: { type: 'string', description: 'How much compositional freedom to take, e.g. structured, hybrid, design-led' },
+            directions: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Specific design directions or constraints for the whole deck',
+            },
+          },
+          required: ['objective', 'audience', 'tone', 'visualStyle', 'colorMood', 'density', 'layoutApproach', 'directions'],
         },
       },
       required: ['title', 'slides'],
@@ -78,7 +111,7 @@ export function createScenarioTool(
       onScenario(args);
       return {
         success: true,
-        message: `Scenario "${args.title}" set with ${args.slides.length} slides. The user can now see the outline in the workspace panel.`,
+        message: `Scenario "${args.title}" set with ${args.slides.length} slides${args.designBrief ? ' and a design brief' : ''}. The user can now review the presentation direction in the workspace panel.`,
       };
     },
   });
