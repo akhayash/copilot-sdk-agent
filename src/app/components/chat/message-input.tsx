@@ -163,6 +163,7 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
           multiple
           accept={ACCEPTED_EXTENSIONS}
           onChange={handleFileSelect}
+          suppressHydrationWarning
           className="hidden"
         />
 
@@ -177,6 +178,7 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
           }}
           disabled={disabled}
           placeholder="メッセージを入力... (Shift+Enter で改行)"
+          suppressHydrationWarning
           className="max-h-32 min-h-[36px] flex-1 resize-none bg-transparent px-1 py-1.5 text-sm outline-none disabled:opacity-50"
           style={{ color: 'var(--foreground)' }}
           rows={1}
