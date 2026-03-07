@@ -13,7 +13,7 @@ import { ModelSelector, type ModelOption, type ReasoningEffortOption } from './m
 import { ReasoningEffortSelector } from './reasoning-effort-selector';
 import { SlidePanel } from '@/app/components/slides/slide-panel';
 import type { Message, Attachment } from '@/domain/entities/message';
-import type { SlideWork, SlideItem, SlideLayout } from '@/domain/entities/slide-work';
+import type { DesignBrief, SlideWork, SlideItem, SlideLayout } from '@/domain/entities/slide-work';
 
 const ACCENT_CYCLE: SlideItem['accent'][] = ['blue', 'green', 'purple', 'teal', 'orange'];
 const VALID_LAYOUTS: SlideLayout[] = ['title', 'agenda', 'section', 'bullets', 'cards', 'stats', 'comparison', 'timeline', 'diagram', 'summary'];
@@ -37,7 +37,7 @@ export function ChatContainer() {
   const [selectedModel, setSelectedModel] = useState(process.env.NEXT_PUBLIC_DEFAULT_MODEL || 'claude-opus-4.6');
   const [selectedModelInfo, setSelectedModelInfo] = useState<ModelOption | null>(null);
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState<ReasoningEffortOption>('medium');
-  const [slideWork, setSlideWork] = useState<SlideWork>({ phase: 'empty', story: null, slides: [], pptx: null, thinking: null, isStreaming: false });
+  const [slideWork, setSlideWork] = useState<SlideWork>({ phase: 'empty', story: null, designBrief: null, slides: [], pptx: null, thinking: null, isStreaming: false });
   const [panelOpen, setPanelOpen] = useState(true);
   const [mobileView, setMobileView] = useState<'chat' | 'scenario'>('chat');
   const [scenarioTitle, setScenarioTitle] = useState<string>('Presentation');
@@ -91,6 +91,11 @@ export function ChatContainer() {
           message: text,
           history: history.slice(0, -1),
           model: selectedModel,
+          workspace: {
+            title: scenarioTitle,
+            slides: slideWork.slides,
+            designBrief: slideWork.designBrief,
+          },
           ...(supportsReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {}),
         }),
       });
@@ -131,7 +136,7 @@ export function ChatContainer() {
                 if (parsed.content) { assistantContent += parsed.content; updated = true; }
                 if (parsed.scenario) {
                   // Scenario tool called — populate right panel directly
-                  const { title, slides } = parsed.scenario;
+                  const { title, slides, designBrief } = parsed.scenario;
                   setScenarioTitle(title);
                   const slideItems: SlideItem[] = slides.map((s: { number: number; title: string; keyMessage?: string; layout?: string; bullets: string[]; notes?: string; icon?: string }) => ({
                     id: `slide-${s.number}`,
@@ -148,6 +153,7 @@ export function ChatContainer() {
                   setSlideWork((prev) => ({
                     ...prev,
                     phase: 'story',
+                    designBrief: normalizeDesignBrief(designBrief),
                     story: { intro: '', storyContent: '' },
                     slides: slideItems,
                     pptx: null,
@@ -346,4 +352,38 @@ export function ChatContainer() {
       </div>
     </div>
   );
+}
+
+function normalizeDesignBrief(input: unknown): DesignBrief | null {
+  if (!input || typeof input !== 'object') return null;
+
+  const brief = input as Partial<Record<keyof DesignBrief, unknown>>;
+  const directions = Array.isArray(brief.directions)
+    ? brief.directions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+
+  const requiredFields: Array<keyof Omit<DesignBrief, 'directions'>> = [
+    'objective',
+    'audience',
+    'tone',
+    'visualStyle',
+    'colorMood',
+    'density',
+    'layoutApproach',
+  ];
+
+  if (!requiredFields.every((field) => typeof brief[field] === 'string' && String(brief[field]).trim().length > 0)) {
+    return null;
+  }
+
+  return {
+    objective: String(brief.objective),
+    audience: String(brief.audience),
+    tone: String(brief.tone),
+    visualStyle: String(brief.visualStyle),
+    colorMood: String(brief.colorMood),
+    density: String(brief.density),
+    layoutApproach: String(brief.layoutApproach),
+    directions,
+  };
 }

@@ -13,6 +13,7 @@ allowed-tools:
 ## 重要: 出力方法
 
 **スライド構成はチャットに直接書かず、必ず `set_scenario` ツールを使ってワークスペースパネルに送信すること。**
+その際、必要に応じて **presentation-wide の `designBrief`** も含めること。
 
 ```
 // 正しい方法: set_scenario ツールを呼ぶ
@@ -28,7 +29,7 @@ set_scenario({
 // 間違った方法: チャットにマークダウンで書く ← これはやらない
 ```
 
-ツール呼び出し後、チャットには「スライド構成をワークスペースに作成しました。確認してPPTX生成しますか？」のような短いメッセージだけ返す。
+ツール呼び出し後、チャットには「スライド構成とデザイン方針をワークスペースに作成しました。確認してPPTX生成しますか？」のような短いメッセージだけ返す。
 
 ## いつこのスキルを使うか
 
@@ -102,10 +103,27 @@ web_search ツールが利用可能な場合、**最低3回は異なるクエリ
 | `number` | ✅ | スライド番号 |
 | `title` | ✅ | 結論・主張を述べるタイトル（McKinsey式） |
 | `keyMessage` | ✅ | このスライドで最も伝えたい一文（So What?） |
-| `layout` | ✅ | レイアウト種別（下記参照） |
+| `layout` | ✅ | レイアウト種別（下記参照）。**後段のPPTX生成で再解釈してよいヒント** |
 | `bullets` | ✅ | コンテンツ項目（具体的なデータや数値を含めること。「〜が重要」のような一般論は避け、「〜は前年比40%増加（出典: Gartner 2025）」のように裏付けを示す） |
 | `notes` | ✅ | スピーカーノート（**全スライド必須、空欄・ダッシュ禁止**。話すべき内容を2-3文で記載。Web検索で得た情報がある場合は出典URLも記載） |
 | `icon` | - | アイコン名 |
+
+さらに、**プレゼン全体のデザイン意図**を `designBrief` に入れることを強く推奨する。
+
+### designBrief の考え方
+
+`designBrief` は PPTX 生成時のアートディレクションであり、各スライドの `layout` より上位の意図を表す。
+
+| フィールド | 説明 |
+|-----------|------|
+| `objective` | 全体として何を感じさせたいか |
+| `audience` | デザイン上の主対象 |
+| `tone` | 例: executive, premium, analytical, bold |
+| `visualStyle` | 例: editorial cards, minimalist dashboard, keynote-style hero |
+| `colorMood` | 配色のムード |
+| `density` | airy / balanced / dense |
+| `layoutApproach` | structured / hybrid / design-led |
+| `directions` | 守ってほしいデザイン指示を箇条書き |
 
 ### レイアウト種別
 
@@ -126,7 +144,7 @@ web_search ツールが利用可能な場合、**最低3回は異なるクエリ
 
 `arrow-trending-up`, `brain`, `building`, `calendar`, `chart`, `checkmark-circle`, `cloud`, `code`, `data-trending`, `document`, `globe`, `lightbulb`, `link`, `lock-closed`, `money`, `people-team`, `rocket`, `search`, `settings`, `shield`, `sparkle`, `star`, `target`, `warning`
 
-**各スライドに適切なアイコンを1つ割り当てること。**
+**各スライドに適切なアイコンを1つ割り当てること。** ただしこれは厳密な実装指示ではなく、デザインのヒントである。
 
 ### 出力例
 

@@ -8,6 +8,17 @@ export interface SlideStory {
   storyContent: string;
 }
 
+export interface DesignBrief {
+  objective: string;
+  audience: string;
+  tone: string;
+  visualStyle: string;
+  colorMood: string;
+  density: string;
+  layoutApproach: string;
+  directions: string[];
+}
+
 export interface SlideCode {
   title: string;
   code: string;
@@ -41,6 +52,7 @@ export type SlidePhase = 'empty' | 'planning' | 'story' | 'generating' | 'ready'
 export interface SlideWork {
   phase: SlidePhase;
   story: SlideStory | null;
+  designBrief: DesignBrief | null;
   /** Parsed per-slide items for preview */
   slides: SlideItem[];
   pptx: SlideCode | null;
