@@ -9,8 +9,7 @@ import { getCopilotClient, getSessionOptions } from '@/infrastructure/copilot/cl
 import { ChatUseCase } from '@/application/chat-use-case';
 import { webSearchTool } from '@/infrastructure/tools/web-search-tool';
 import { createScenarioTool, createUpdateSlideTool } from '@/infrastructure/tools/scenario-tool';
-import type { SessionConfig } from '@github/copilot-sdk';
-import { approveAll } from '@github/copilot-sdk';
+import type { SessionConfig, PermissionHandler } from '@github/copilot-sdk';
 import type { DesignBrief, SlideItem } from '@/domain/entities/slide-work';
 
 type ReasoningEffort = NonNullable<SessionConfig['reasoningEffort']>;
@@ -88,7 +87,11 @@ export async function POST(req: NextRequest) {
               mode: 'append' as const,
               content: 'You are a helpful AI assistant that creates presentations. Always respond in the same language as the user. When creating a slide outline, ALWAYS use the set_scenario tool to send the scenario to the workspace panel. Use the optional designBrief to capture the intended tone, density, and visual direction for the later PPTX step. When generating PPTX, treat slide layout and icon values as hints rather than rigid instructions, and feel free to design a stronger visual composition if it better communicates the approved story. When the user asks to change a specific slide, use the update_slide tool to update only that slide. Do NOT output slide listings in the chat message.',
             },
-            onPermissionRequest: approveAll,
+            onPermissionRequest: ((req) => {
+              if (req.kind === 'custom-tool') return { kind: 'approved' };
+              console.warn(`[permission] denied ${req.kind}`, req);
+              return { kind: 'denied-by-rules' };
+            }) satisfies PermissionHandler,
           };
 
           // Create session

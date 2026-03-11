@@ -92,6 +92,7 @@ AIはスライド構成をチャットに書かず、`set_scenario` ツールで
 ## Safety
 
 - Never commit secrets. `GITHUB_TOKEN` / `TAVILY_API_KEY` は環境変数で注入。
+- **Permission ハンドラー**: SDK の `approveAll` は使わず、`custom-tool` kind のみ許可するカスタムハンドラーを使用。`shell`・`write`・`read`・`mcp`・`url` は `denied-by-rules` で拒否される。
 - File uploads are validated server-side (type, size limits).
 - PPTX is generated in memory — no temp files on disk.
 - AI生成コードは `new Function()` で実行（pptxgenjs スコープに限定）。
