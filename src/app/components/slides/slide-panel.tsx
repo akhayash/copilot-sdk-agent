@@ -65,7 +65,7 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
   // Skeleton placeholder
   if (slides.length === 0 && phase !== 'ready') {
     return (
-      <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex h-full w-full flex-col overflow-hidden">
         <div className="flex items-center gap-2 border-b px-3 py-3 sm:px-4 md:py-2.5" style={{ borderColor: 'var(--border)' }}>
           <Layers size={15} className={isStreaming ? 'thinking-pulse' : ''} style={{ color: isStreaming ? 'var(--accent)' : 'var(--border)' }} />
           <span className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
@@ -77,7 +77,7 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
             <div key={n} className="mb-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
               <div className="flex items-center gap-2">
                 <div className="h-6 w-6 rounded" style={{ background: 'var(--surface-secondary)' }} />
-                <div className="h-3 flex-1 rounded" style={{ background: 'var(--surface-secondary)', maxWidth: `${50 + (n % 3) * 15}%` }} />
+                <div className="h-3 flex-1 rounded" style={{ background: 'var(--surface-secondary)', maxWidth: `${70 + (n % 3) * 10}%` }} />
               </div>
               <div className="mt-2 space-y-1.5 pl-8">
                 <div className="h-2 rounded" style={{ background: 'var(--surface-secondary)', width: '90%' }} />
@@ -94,7 +94,7 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex h-full w-full flex-col overflow-hidden">
       {/* Panel header */}
       <div className="flex flex-col gap-2 border-b px-3 py-3 sm:px-4 md:flex-row md:items-center md:justify-between md:py-2.5" style={{ borderColor: 'var(--border)' }}>
         <div className="flex min-w-0 items-center gap-2">

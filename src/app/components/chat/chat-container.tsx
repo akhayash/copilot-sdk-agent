@@ -323,7 +323,7 @@ export function ChatContainer() {
         {/* Chat pane — narrower when panel open to give workspace more room */}
         <div
           className={`${mobileView === 'chat' ? 'flex' : 'hidden'} min-h-0 flex-1 flex-col md:flex ${
-            panelOpen ? 'md:w-[35%] md:min-w-[320px] md:border-r' : 'md:w-full'
+            panelOpen ? 'md:w-[30%] md:flex-none md:min-w-[320px] md:border-r' : 'md:w-full'
           }`}
           style={{ borderColor: 'var(--border)' }}
         >
