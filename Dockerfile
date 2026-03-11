@@ -14,11 +14,11 @@ COPY . .
 RUN pnpm run setup:icons
 RUN pnpm build
 
-# --- Deps stage: flat node_modules via npm ---
-FROM node:22-slim AS deps
+# --- Deps stage: production-only flat node_modules via pnpm ---
+FROM base AS deps
 WORKDIR /app
-COPY package.json ./
-RUN npm install --omit=dev
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile --prod --shamefully-hoist
 
 # --- Runner stage ---
 FROM node:22-slim AS runner
