@@ -89,6 +89,11 @@ export async function POST(req: NextRequest) {
             },
             onPermissionRequest: ((req) => {
               if (req.kind === 'custom-tool') return { kind: 'approved' };
+              // Allow reading SDK tool-output temp files (e.g. web search results)
+              if (req.kind === 'read') {
+                const filePath = String((req as Record<string, unknown>).path ?? '');
+                if (filePath.includes('copilot-tool-output')) return { kind: 'approved' };
+              }
               console.warn(`[permission] denied ${req.kind}`, req);
               return { kind: 'denied-by-rules' };
             }) satisfies PermissionHandler,
