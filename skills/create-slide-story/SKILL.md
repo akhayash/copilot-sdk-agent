@@ -121,8 +121,8 @@ web_search ツールが利用可能な場合、**最低3回は異なるクエリ
 | `tone` | 例: executive, premium, analytical, bold |
 | `visualStyle` | 例: editorial cards, minimalist dashboard, keynote-style hero |
 | `colorMood` | 配色のムード |
-| `density` | airy / balanced / dense |
-| `layoutApproach` | structured / hybrid / design-led |
+| `density` | airy / balanced / dense（デフォルトは **balanced** だが、ビジネスプレゼンでは **dense** 寄りを推奨。スカスカなスライドは避ける） |
+| `layoutApproach` | structured / hybrid / design-led（デフォルトは **hybrid**。AI の創造的な再解釈を許容する） |
 | `directions` | 守ってほしいデザイン指示を箇条書き |
 
 ### レイアウト種別
@@ -133,7 +133,7 @@ web_search ツールが利用可能な場合、**最低3回は異なるクエリ
 | `agenda` | アジェンダ / サマリー | 番号付き項目リスト |
 | `section` | セクション区切り | 大きなテキスト + アクセントバー |
 | `bullets` | 箇条書き説明 | タイトル + 箇条書き |
-| `cards` | 複数項目の並列表示 | 2-4枚のカード |
+| `cards` | 複数項目の並列表示 | 2-6枚のカード |
 | `stats` | 数値・統計ハイライト | 大きな数値 + ラベル |
 | `comparison` | 比較・Before/After | 2-3列の比較表 |
 | `timeline` | 時系列・ステップ | 横並びフロー |
