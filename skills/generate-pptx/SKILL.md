@@ -27,7 +27,7 @@ JSON ではなく JavaScript コードを出力することで、カードレイ
 
 ## スコープに提供される定数
 
-### カラー定数 `C`
+### カラー定数 `C`（ベースパレット）
 
 ```javascript
 C.BLUE       // '0078D4' — Microsoft Blue（プライマリ）
@@ -49,6 +49,19 @@ C.PURPLE_LIGHT // 'F0E6F6'
 C.TEAL       // '008272'
 C.WHITE      // 'FFFFFF'
 ```
+
+**カラーの自由な使用**: `C` 定数はベースパレットとして用意しているが、**`#` なしの 6桁 HEX であれば自由にカスタムカラーを直書きしてよい。** `designBrief.colorMood` やプレゼンのテーマに合わせて、より表現力の高い配色を設計すること。
+
+**カラームード別の推奨パレット例:**
+
+| colorMood | アクセント | 背景 | テキスト | 補足 |
+|-----------|----------|------|---------|------|
+| warm / energetic | `E85D26`, `F59E0B`, `D94F04` | `FFF7ED`, `FFFBEB` | `1B1B1B` | オレンジ〜イエロー系 |
+| cool / professional | `0078D4`, `2563EB`, `3B82F6` | `EFF6FF`, `F0F9FF` | `1E3A5F` | ブルー系 |
+| nature / sustainable | `059669`, `10B981`, `047857` | `ECFDF5`, `F0FDF4` | `064E3B` | グリーン系 |
+| premium / luxury | `7C3AED`, `6D28D9`, `A855F7` | `FAF5FF`, `F5F3FF` | `1E1B4B` | パープル系 |
+| bold / startup | `DC2626`, `EF4444`, `F97316` | `FEF2F2`, `FFF7ED` | `1B1B1B` | レッド〜オレンジ系 |
+| monochrome | `374151`, `6B7280`, `111827` | `F9FAFB`, `F3F4F6` | `111827` | グレー系 |
 
 ### フォント定数 `F`
 
@@ -102,9 +115,9 @@ slide.addImage({
 
 1. **スライドタイトル = 主張**: シナリオの `keyMessage` をスライドタイトルとして使う
 2. **レイアウト多様性**: 3枚連続で同じレイアウトを使わない
-3. **データ重視**: 数値がある場合は `stats` レイアウト（drawStat）で大きく見せる
-4. **比較は並列**: Before/After や選択肢は `cards` レイアウトで横並び
-5. **1スライド1メッセージ**: 詰め込みすぎない
+3. **データ重視**: 数値がある場合は統計ハイライトで大きく見せる
+4. **比較は並列**: Before/After や選択肢はカードで横並び
+5. **1スライド1テーマ**: 1つのテーマに対して複数のサブポイント・データ・図解を盛り込んでよい。余白が多すぎるスカスカなスライドは避け、情報が充実した構成にする
 
 ### シナリオとの連動
 
@@ -114,22 +127,45 @@ slide.addImage({
 - `layout` はそのまま適用してもよいが、designBrief や全体の流れに合わせて再解釈してよい
 - `icon` で指定されたアイコンは優先候補としつつ、不要なら無理に使わなくてもよい
 
+### bullets の解釈ルール（重要）
+
+**`bullets` はデータソースであり、表示形式ではない。** シナリオの `bullets` 配列をそのまま箇条書きとして表示するのは `layout: bullets` のときだけ。それ以外の layout では、bullets の内容を解析し、最適なビジュアル表現に変換すること。
+
+| layout | bullets の解釈 | 変換先ビジュアル |
+|--------|---------------|----------------|
+| `title` | サブタイトル・キャッチコピー | 大きな中央テキスト |
+| `agenda` | アジェンダ項目 | 番号付きリスト or ステップカード |
+| `section` | セクションの説明文 | 大きなテキスト + アクセント |
+| `bullets` | **そのまま箇条書き** | 箇条書きリスト（唯一の例外） |
+| `cards` | 各カードの内容 | 2-6枚の独立カードに分割 |
+| `stats` | 数値データ（例: "市場規模: $15.7B"）| 大きな数値 + ラベルのハイライトカード |
+| `comparison` | 比較項目（例: "Before: X → After: Y"）| 2-3列の比較表 or 対比カード |
+| `timeline` | 時系列ステップ | 矢印で接続された横並びフロー |
+| `diagram` | 構成要素・関係性 | 図解・マトリクス・ピラミッド |
+| `summary` | 重要ポイント | 3つの強調カード or アイコン付きまとめ |
+
+**禁止事項:** `layout: stats` なのに数値を箇条書きで表示する、`layout: cards` なのに全項目を1つのテキストボックスに入れる等は NG。bullets の文字列からデータを抽出し、layout に応じた最もインパクトのあるビジュアルに変換すること。
+
 ### フォントサイズ
 
 | 用途               | サイズ  | 太さ    |
 | ------------------ | ------- | ------- |
-| スライドタイトル   | 28-32pt | Bold    |
-| セクションタイトル | 36-44pt | Bold    |
-| 本文               | 16-20pt | Regular |
-| 箇条書き           | 16-18pt | Regular |
-| カード内テキスト   | 14-16pt | Regular |
-| カードタイトル     | 15-17pt | Bold    |
-| 統計数値           | 32-48pt | Bold    |
-| キャプション       | 11-12pt | Regular |
-| ヘッダー帯         | 9-10pt  | Regular |
-| フッター           | 8pt     | Regular |
+| スライドタイトル   | 24-32pt | Bold    |
+| セクションタイトル | 32-44pt | Bold    |
+| 本文               | 13-18pt | Regular |
+| 箇条書き           | 12-16pt | Regular |
+| カード内テキスト   | 11-14pt | Regular |
+| カードタイトル     | 13-16pt | Bold    |
+| 統計数値           | 28-48pt | Bold    |
+| キャプション       | 9-11pt  | Regular |
+| ヘッダー帯         | 8-10pt  | Regular |
+| フッター           | 7-8pt   | Regular |
+
+**密度の考え方**: `designBrief.density` が `dense` の場合はサイズ範囲の下限寄り、`airy` の場合は上限寄りを選ぶ。デフォルト（`balanced`）でも情報量を優先し、スカスカにならないよう注意する。
 
 ### Slide Master パターン
+
+3種の Slide Master が用意されている。**これらは出発点であり、designBrief に応じてカスタマイズしてよい。** 例えばヘッダー帯の色を変えたり、背景にグラデーションを使ったりすることも可能。
 
 #### CONTENT（コンテンツスライド）
 
@@ -173,7 +209,25 @@ pres.defineSlideMaster({
 });
 ```
 
-### レイアウトパターン
+### レイアウト設計の自由度
+
+以下のヘルパー関数は **参考パターン** として提供する。そのまま使ってもよいが、**ゼロからオリジナルのレイアウトを設計することを強く推奨する。**
+
+考えられる構図バリエーション:
+- **2カラム・3カラム分割**: 左に図解、右にテキスト等
+- **グリッドレイアウト**: 2×3 や 3×3 のカード/アイコングリッド
+- **フルブリード背景**: 濃い色の背景に白文字のインパクトスライド
+- **左サイドバー + メインコンテンツ**: サイドにナビゲーション的な要素
+- **ステップフロー**: 矢印で接続された横並びステップ
+- **ピラミッド / マトリクス**: 階層構造や2軸の分類図
+- **大きな数値 + 補足テキスト**: 統計をヒーロー要素にしたレイアウト
+- **アイコン + テキストの交互配置**: リッチな箇条書きの代替
+
+PptxGenJS の `addText`, `addShape`, `addImage` を自由に組み合わせて、表現力の高いスライドを作成すること。
+
+### 参考: ヘルパー関数パターン
+
+以下は **使用は任意** の参考実装。
 
 #### スライドタイトル + アンダーバー
 
@@ -219,7 +273,7 @@ function drawCard(slide, x, y, w, h, opts = {}) {
       options: {
         fontSize: 13, fontFace: F.JA, color: C.TEXT, breakLine: true,
         bullet: bodyBullet ? { type: 'bullet', color: C.MID_GRAY } : false,
-        lineSpacingMultiple: 1.4,
+        lineSpacingMultiple: 1.2,
       },
     }));
     slide.addText(textArr, {
@@ -257,7 +311,7 @@ function addBullets(slide, x, y, w, h, bullets, opts = {}) {
     options: {
       fontSize, fontFace: F.JA, color,
       bullet: { type: 'bullet', color: bulletColor },
-      breakLine: true, lineSpacingMultiple: 1.4,
+      breakLine: true, lineSpacingMultiple: 1.2,
     },
   }));
   slide.addText(items, { x, y, w, h, valign: 'top', paraSpaceAfter: 6 });
@@ -269,8 +323,8 @@ function addBullets(slide, x, y, w, h, bullets, opts = {}) {
 - **絵文字を使用しない**: `💡` `🔄` `✅` 等は Noto Sans JP で表示崩れの原因になる
 - **矢印は可**: テキストの `→` `↑` は使用可
 - **チェックマーク**: 絵文字ではなく `✔`（U+2714）を使用
-- **行間**: 日本語テキストは `lineSpacingMultiple: 1.5` を推奨
-- **最小フォント**: 8pt 未満は使用しない
+- **行間**: 日本語テキストは `lineSpacingMultiple: 1.2` を標準とする（情報量が多い場合は `1.1` も可）
+- **最小フォント**: 7pt 未満は使用しない
 - ユーザーの言語に合わせてスライドを作成する
 - 専門用語は原語を併記（例:「検索拡張生成（RAG）」）
 
@@ -289,8 +343,8 @@ function addBullets(slide, x, y, w, h, bullets, opts = {}) {
 
 1. ユーザーのリクエストが曖昧な場合、トピック・対象者・目的を確認する
 2. Web検索ツールが利用可能な場合、最新情報を収集する
-3. Slide Master を定義する（CONTENT, TITLE, SECTION）
-4. ヘルパー関数を定義する（addSlideTitle, drawCard, addBullets 等）
-5. スライドを順番に追加する
+3. Slide Master を定義する（CONTENT, TITLE, SECTION をベースに、designBrief に応じてカスタマイズ）
+4. 必要に応じてヘルパー関数を定義する（参考パターンを使うか、オリジナルで書くかは自由）
+5. スライドを順番に追加する（各スライドに十分な情報量を持たせ、スカスカにしない）
 6. 各スライドに `slide.addNotes()` でスピーカーノートを追加する
 7. コードの前に構成の簡単な説明を添える
