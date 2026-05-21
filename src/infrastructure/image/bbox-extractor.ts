@@ -25,7 +25,7 @@ import {
   type SlideLayout,
 } from '@/domain/entities/slide-layout';
 
-const DEFAULT_TIMEOUT_MS = 150_000;
+const DEFAULT_TIMEOUT_MS = 300_000;
 
 export class BboxExtractionError extends Error {
   constructor(message: string, public reason: string) {

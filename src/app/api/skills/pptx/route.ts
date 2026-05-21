@@ -203,8 +203,8 @@ async function handleImageEditablePptx(body: PptxCodeRequest): Promise<NextRespo
   let fallbackCount = 0;
 
   // Parallel bbox extraction with per-slide timeout.
-  // Vision LLM inference can take 90-120 s per slide in practice.
-  const BBOX_TIMEOUT_MS = 150_000;
+  // Vision LLM inference can take 90-200 s per slide in practice.
+  const BBOX_TIMEOUT_MS = 300_000;
   await Promise.all(
     slideEntries.map(async (entry) => {
       if (!entry.image) {
