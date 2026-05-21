@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
+import { tmpdir } from 'os';
+import { writeFileSync, unlinkSync } from 'fs';
+import crypto from 'crypto';
 import { getCopilotClient, getSessionOptions } from '@/infrastructure/copilot/client';
 import { ChatUseCase } from '@/application/chat-use-case';
 import { createScenarioTool, createUpdateSlideTool } from '@/infrastructure/tools/scenario-tool';
@@ -39,12 +42,19 @@ function isImageMode(mode: GenerationMode): boolean {
   return mode === 'image-then-pptx' || mode === 'image-bleed' || mode === 'image-editable';
 }
 
+interface ImageAttachment {
+  dataUrl: string;
+  mimeType: string;
+  filename: string;
+}
+
 interface ChatRequest {
   message: string;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   model?: string;
   reasoningEffort?: ReasoningEffort;
   generationMode?: GenerationMode;
+  imageAttachments?: ImageAttachment[];
   workspace?: {
     title: string;
     slides: SlideItem[];
@@ -55,13 +65,14 @@ interface ChatRequest {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as ChatRequest;
-    const { message, history, model, reasoningEffort, workspace } = body;
+    const { message, history, model, reasoningEffort, workspace, imageAttachments } = body;
     const generationMode: GenerationMode = isGenerationMode(body.generationMode)
       ? body.generationMode
       : 'code';
 
-    // Validate input
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+    // Validate input — allow empty message when images are attached
+    const hasImageAttachments = imageAttachments && imageAttachments.length > 0;
+    if (!hasImageAttachments && (!message || typeof message !== 'string' || message.trim().length === 0)) {
       return NextResponse.json({ error: 'Message is required and must be non-empty' }, { status: 400 });
     }
     if (reasoningEffort && !isReasoningEffort(reasoningEffort)) {
@@ -72,7 +83,21 @@ export async function POST(req: NextRequest) {
     }
 
     // Build prompt
-    const prompt = ChatUseCase.buildPrompt(message, history, workspace);
+    const prompt = ChatUseCase.buildPrompt(message ?? '', history, workspace);
+
+    // Write image attachments to temp files for SDK consumption
+    const tmpImagePaths: string[] = [];
+    if (hasImageAttachments) {
+      for (const img of imageAttachments!) {
+        const base64 = img.dataUrl.split(',')[1];
+        if (!base64) continue;
+        const buf = Buffer.from(base64, 'base64');
+        const ext = img.mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
+        const tmpPath = path.join(tmpdir(), `chat-img-${crypto.randomUUID()}.${ext}`);
+        writeFileSync(tmpPath, buf);
+        tmpImagePaths.push(tmpPath);
+      }
+    }
 
     // Initialize copilot client
     const copilot = await getCopilotClient();
@@ -158,6 +183,9 @@ export async function POST(req: NextRequest) {
             microsoftLearnEnabled
               ? 'KNOWLEDGE GROUNDING: When the user asks about Microsoft / Azure topics (e.g., Azure services, .NET, M365, Power Platform, Microsoft Graph), use the Microsoft Learn MCP tools (`microsoft_docs_search`, `microsoft_code_sample_search`, `microsoft_docs_fetch`) to ground slide content in official Microsoft documentation BEFORE calling set_scenario. Prefer search first, then fetch for depth when needed.'
               : '',
+            tmpImagePaths.length > 0
+              ? `IMAGE INPUT: The user has attached ${tmpImagePaths.length} image(s) to their message. Analyze the image(s) thoroughly — extract themes, data visualizations, diagrams, text, branding, and visual style — and use them as the primary reference for creating or updating slides. If the user provides no text instruction, infer their intent from the image content and create an appropriate presentation.`
+              : '',
           ].filter((s) => s.length > 0);
           const modeSystemLines =
             isImageMode(generationMode)
@@ -185,10 +213,11 @@ export async function POST(req: NextRequest) {
             },
             onPermissionRequest: ((req) => {
               if (req.kind === 'custom-tool') return { kind: 'approved' };
-              // Allow reading SDK tool-output temp files (e.g. web search results)
+              // Allow reading SDK tool-output temp files and chat image attachments
               if (req.kind === 'read') {
                 const filePath = String((req as Record<string, unknown>).path ?? '');
                 if (filePath.includes('copilot-tool-output')) return { kind: 'approved' };
+                if (tmpImagePaths.includes(filePath)) return { kind: 'approved' };
               }
               // Allow built-in web_search (bundled MCP) and Microsoft Learn MCP (read-only docs lookup).
               if (req.kind === 'mcp') {
@@ -239,7 +268,21 @@ export async function POST(req: NextRequest) {
           });
 
           // Send message and wait for completion (10 min timeout)
-          await session.sendAndWait({ prompt }, 600_000);
+          await session.sendAndWait(
+            {
+              prompt,
+              ...(tmpImagePaths.length > 0
+                ? {
+                    attachments: tmpImagePaths.map((p, i) => ({
+                      type: 'file' as const,
+                      path: p,
+                      displayName: imageAttachments![i]?.filename ?? `image-${i + 1}`,
+                    })),
+                  }
+                : {}),
+            },
+            600_000,
+          );
 
           clearInterval(keepalive);
 
@@ -257,6 +300,10 @@ export async function POST(req: NextRequest) {
           unsubMessages?.();
           unsubReasoning?.();
           unsubError?.();
+          // Cleanup temp image files
+          for (const p of tmpImagePaths) {
+            try { unlinkSync(p); } catch { /* ignore */ }
+          }
           if (session) {
             await session.destroy();
           }

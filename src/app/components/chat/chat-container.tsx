@@ -204,6 +204,11 @@ export function ChatContainer() {
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
+      // Extract image attachments (DataURL) to send to AI vision
+      const imageAttachments = attachments
+        ?.filter((a) => a.mimeType.startsWith('image/') && a.content.startsWith('data:'))
+        .map((a) => ({ dataUrl: a.content, mimeType: a.mimeType, filename: a.filename }));
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -218,6 +223,7 @@ export function ChatContainer() {
           },
           generationMode: slideWork.generationMode ?? 'code',
           ...(supportsReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {}),
+          ...(imageAttachments && imageAttachments.length > 0 ? { imageAttachments } : {}),
         }),
       });
 

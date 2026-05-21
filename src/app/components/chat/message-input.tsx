@@ -35,8 +35,10 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0);
 
+  const hasImageAttachment = attachments.some((a) => a.mimeType.startsWith('image/'));
+
   const handleSend = () => {
-    if (text.trim()) {
+    if (text.trim() || hasImageAttachment) {
       onSend(text, attachments.length > 0 ? attachments : undefined);
       setText('');
       setAttachments([]);
@@ -49,14 +51,21 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
     for (const file of Array.from(files)) {
       if (file.size > MAX_FILE_SIZE) continue;
 
-      // Read as text for text-based files, base64 for binary
       const isText = file.type.startsWith('text/') ||
         ['application/json', 'application/xml', 'application/yaml'].includes(file.type) ||
         /\.(md|csv|json|xml|yaml|yml|ts|js|py|html|css|txt)$/i.test(file.name);
+      const isImage = file.type.startsWith('image/');
 
       let content: string;
       if (isText) {
         content = await file.text();
+      } else if (isImage) {
+        // Read image as DataURL so it can be displayed as thumbnail and sent to AI
+        content = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
       } else {
         const buffer = await file.arrayBuffer();
         content = `[binary:${btoa(String.fromCharCode(...new Uint8Array(buffer).slice(0, 1024)))}...]`;
@@ -76,6 +85,29 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
       setAttachments((prev) => [...prev, ...newAttachments]);
     }
   }, []);
+
+  const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData.items);
+    const imageItems = items.filter((item) => item.type.startsWith('image/'));
+    if (imageItems.length === 0) return;
+
+    const files: File[] = [];
+    for (const item of imageItems) {
+      const file = item.getAsFile();
+      if (file) {
+        const ext = item.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
+        files.push(new File([file], `paste-${Date.now()}.${ext}`, { type: item.type }));
+      }
+    }
+
+    if (files.length > 0) {
+      await processFiles(files);
+      // Suppress default paste only if clipboard has no text (pure image paste)
+      if (!e.clipboardData.types.includes('text/plain')) {
+        e.preventDefault();
+      }
+    }
+  }, [processFiles]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) await processFiles(e.target.files);
@@ -176,8 +208,9 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
               handleSend();
             }
           }}
+          onPaste={handlePaste}
           disabled={disabled}
-          placeholder="メッセージを入力... (Shift+Enter で改行)"
+          placeholder="メッセージを入力... 画像はペーストできます (Shift+Enter で改行)"
           suppressHydrationWarning
           className="max-h-32 min-h-[36px] flex-1 resize-none bg-transparent px-1 py-1.5 text-sm outline-none disabled:opacity-50"
           style={{ color: 'var(--foreground)' }}
@@ -186,9 +219,9 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
 
         <button
           onClick={handleSend}
-          disabled={disabled || !text.trim()}
+          disabled={disabled || (!text.trim() && !hasImageAttachment)}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white transition-colors disabled:opacity-40"
-          style={{ background: disabled || !text.trim() ? 'var(--border)' : 'var(--accent)' }}
+          style={{ background: disabled || (!text.trim() && !hasImageAttachment) ? 'var(--border)' : 'var(--accent)' }}
         >
           <Send size={16} />
         </button>

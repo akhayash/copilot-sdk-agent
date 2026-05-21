@@ -32,31 +32,64 @@ interface AttachmentPreviewProps {
   onRemove: (id: string) => void;
 }
 
+function AttachmentItem({ att, onRemove }: { att: Attachment; onRemove: (id: string) => void }) {
+  const isImageDataUrl = att.content.startsWith('data:image/');
+
+  if (isImageDataUrl) {
+    return (
+      <div
+        className="relative rounded-lg border overflow-hidden"
+        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={att.content}
+          alt={att.filename}
+          className="h-20 w-24 object-cover"
+        />
+        <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 py-0.5">
+          <span className="block truncate text-[10px] text-white">{att.filename}</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onRemove(att.id)}
+          className="absolute right-1 top-1 rounded-full bg-black/60 p-0.5 transition-colors hover:bg-black/80"
+        >
+          <X size={10} className="text-white" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm"
+      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+    >
+      {getFileIcon(att.mimeType, att.filename)}
+      <span className="max-w-[160px] truncate font-medium" style={{ color: 'var(--foreground)' }}>
+        {att.filename}
+      </span>
+      <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+        {formatSize(att.size)}
+      </span>
+      <button
+        type="button"
+        onClick={() => onRemove(att.id)}
+        className="ml-1 rounded p-0.5 transition-colors hover:bg-gray-200"
+        style={{ color: 'var(--text-secondary)' }}
+      >
+        <X size={12} />
+      </button>
+    </div>
+  );
+}
+
 export function AttachmentPreview({ attachments, onRemove }: AttachmentPreviewProps) {
   return (
     <div className="flex flex-wrap gap-2">
       {attachments.map((att) => (
-        <div
-          key={att.id}
-          className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm"
-          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-        >
-          {getFileIcon(att.mimeType, att.filename)}
-          <span className="max-w-[160px] truncate font-medium" style={{ color: 'var(--foreground)' }}>
-            {att.filename}
-          </span>
-          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-            {formatSize(att.size)}
-          </span>
-          <button
-            type="button"
-            onClick={() => onRemove(att.id)}
-            className="ml-1 rounded p-0.5 transition-colors hover:bg-gray-200"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            <X size={12} />
-          </button>
-        </div>
+        <AttachmentItem key={att.id} att={att} onRemove={onRemove} />
       ))}
     </div>
   );
