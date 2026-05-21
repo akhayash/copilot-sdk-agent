@@ -78,6 +78,7 @@ const SYSTEM_PROMPT = [
   '- ALL readable text on the slide MUST be represented as separate "textbox" elements. NEVER return a single full-slide picture with no textboxes.',
   "- ids must be unique within the slide.",
   '- Hex colors include the leading "#".',
+  "- CRITICAL: Do NOT create a 'picture' element for a plain solid or gradient background. If the background is a solid color, represent it as an auto_shape with fill, or omit it entirely. Use 'picture' ONLY for actual content images (charts, photos, icons) that are NOT the background layer.",
   "- CRITICAL: For each textbox bbox, add 5% extra width and 10% extra height beyond the visible text region to prevent font-metric clipping in PowerPoint. Example: if text visually spans x=0.05..0.45, set bbox x=0.03, w=0.44.",
   '- CRITICAL: Do NOT split a single logical text run into multiple textbox elements. If a heading reads "Foo Bar", return ONE textbox with text="Foo Bar", not two.',
   "- If text appears in two columns, create one textbox per column — never split a column's text into multiple boxes.",

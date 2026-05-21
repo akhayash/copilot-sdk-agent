@@ -119,7 +119,8 @@ export function buildImagePrompt(slide: SlideItem, brief: DesignBrief | null): s
     '- Render all on-slide text in clean, professional Japanese typography. Numbers and English brand names stay in their original script.',
     '- Use a clear typographic hierarchy (hero number / title / body / footnote).',
     '- Include a small source caption at the bottom if research notes reference sources.',
-    '- Background, color palette, and accents should match the visual style above.',
+    '- BACKGROUND: Use a plain solid color or very subtle single-tone gradient ONLY. NO photographic backgrounds, NO textured overlays, NO complex patterns. A clean white, light grey, or single-tone flat background is strongly preferred. This is essential so text can be reliably extracted later.',
+    '- Color palette and accents should match the visual style above, but applied to text, shapes and icons — not the background.',
     '- Output must be ONE complete slide. No multi-panel collages, no mockup frames, no laptop/phone bezels, no presenter photos.',
   ].filter((p): p is string => p !== null);
 
