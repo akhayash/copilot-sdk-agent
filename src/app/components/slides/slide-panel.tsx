@@ -5,11 +5,14 @@
 
 'use client';
 
-import React, { useState } from 'react';
-import { Layers, Presentation, Download, Check, Code, MessageSquare, Layout, Sparkles } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Layers, Presentation, Download, Check, Code, MessageSquare, Layout, Sparkles, ImagePlus } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { SlideWork } from '@/domain/entities/slide-work';
+import type { SlideWork, SlideItem } from '@/domain/entities/slide-work';
+import { ModeToggle, type GenerationMode } from './mode-toggle';
+import { SlideImageCard } from './slide-image-card';
+import { SlideBodyEditor } from './slide-body-editor';
 
 const LAYOUT_LABELS: Record<string, string> = {
   title: 'タイトル', agenda: 'アジェンダ', section: 'セクション区切り',
@@ -19,17 +22,63 @@ const LAYOUT_LABELS: Record<string, string> = {
 
 interface SlidePanelProps {
   slideWork: SlideWork;
+  /** Triggers the AI to generate pptxgenjs code (code mode). */
   onRequestGenerate?: () => void;
+  /** Image generation mode handlers (image-then-pptx mode). */
+  onModeChange?: (mode: GenerationMode) => void;
+  onGenerateImage?: (slideNumber: number) => void;
+  onRegenerateImage?: (slideNumber: number) => void;
+  onGenerateAllImages?: () => void;
+  onUpdateSlideBody?: (slideNumber: number, bodyMarkdown: string) => void;
+  imageModeDisabled?: boolean;
+  imageModeDisabledHint?: string;
 }
 
-export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
+export function SlidePanel({
+  slideWork,
+  onRequestGenerate,
+  onModeChange,
+  onGenerateImage,
+  onRegenerateImage,
+  onGenerateAllImages,
+  onUpdateSlideBody,
+  imageModeDisabled = false,
+  imageModeDisabledHint,
+}: SlidePanelProps) {
   const { phase, slides, story, designBrief, pptx, isStreaming } = slideWork;
+  const mode: GenerationMode = slideWork.generationMode ?? 'code';
   const [showCode, setShowCode] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleDownload = async () => {
+  const imagesReady = useMemo(
+    () => slides.length > 0 && slides.every((s) => s.imageStatus === 'ready' && Boolean(s.imageUrl)),
+    [slides],
+  );
+  const anyImageGenerating = useMemo(
+    () => slides.some((s) => s.imageStatus === 'generating'),
+    [slides],
+  );
+  const hasIdleOrErrorImage = useMemo(
+    () => slides.some((s) => !s.imageStatus || s.imageStatus === 'idle' || s.imageStatus === 'error'),
+    [slides],
+  );
+
+  const isImageMode = mode === 'image-bleed' || mode === 'image-editable';
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCodeDownload = async () => {
     if (!pptx) return;
     setIsGenerating(true);
     setError(null);
@@ -39,21 +88,12 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: pptx.code, title: pptx.title }),
       });
-
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: 'Unknown error' }));
         throw new Error(err.error || `Failed: ${response.status}`);
       }
-
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${pptx.title || 'presentation'}.pptx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `${pptx.title || 'presentation'}.pptx`);
       setDownloaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unknown error');
@@ -62,7 +102,116 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
     }
   };
 
-  // Skeleton placeholder
+  const handleImageModePptx = async () => {
+    if (!imagesReady) return;
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const imageIds = slides
+        .filter((s) => s.imageStatus === 'ready' && s.imageUrl)
+        .map((s) => {
+          // imageUrl shape: /api/skills/image/<imageId>
+          const url = s.imageUrl ?? '';
+          const imageId = url.split('/').filter(Boolean).pop() ?? '';
+          return { slideNumber: s.number, imageId };
+        })
+        .filter((entry) => entry.imageId.length > 0);
+
+      const scenario = slides.map((s) => ({
+        number: s.number,
+        title: s.title,
+        keyMessage: s.keyMessage,
+        layout: s.layout,
+        bullets: s.bullets,
+        notes: s.notes,
+        icon: s.icon ?? undefined,
+        bodyMarkdown: s.bodyMarkdown ?? undefined,
+      }));
+
+      const title = pptx?.title || (slides[0]?.title ?? 'presentation');
+      const response = await fetch('/api/skills/pptx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          generationMode: 'image-bleed',
+          imageIds,
+          scenario,
+          title,
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error || `Failed: ${response.status}`);
+      }
+      const fallback = response.headers.get('x-pptx-fallback');
+      const blob = await response.blob();
+      downloadBlob(blob, `${title}.pptx`);
+      setDownloaded(true);
+      if (fallback) {
+        setError(`一部スライドで簡易レイアウトを使用しました (${fallback})`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleImageEditablePptx = async () => {
+    if (!imagesReady) return;
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const imageIds = slides
+        .filter((s) => s.imageStatus === 'ready' && s.imageUrl)
+        .map((s) => {
+          const url = s.imageUrl ?? '';
+          const imageId = url.split('/').filter(Boolean).pop() ?? '';
+          return { slideNumber: s.number, imageId };
+        })
+        .filter((entry) => entry.imageId.length > 0);
+
+      const scenario = slides.map((s) => ({
+        number: s.number,
+        title: s.title,
+        keyMessage: s.keyMessage,
+        layout: s.layout,
+        bullets: s.bullets,
+        notes: s.notes,
+        icon: s.icon ?? undefined,
+        bodyMarkdown: s.bodyMarkdown ?? undefined,
+      }));
+
+      const title = pptx?.title || (slides[0]?.title ?? 'presentation');
+      const response = await fetch('/api/skills/pptx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          generationMode: 'image-editable',
+          imageIds,
+          scenario,
+          title,
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error || `Failed: ${response.status}`);
+      }
+      const fallbackCount = response.headers.get('x-pptx-fallback-count');
+      const blob = await response.blob();
+      downloadBlob(blob, `${title}.pptx`);
+      setDownloaded(true);
+      if (fallbackCount && Number(fallbackCount) > 0) {
+        setError(`${fallbackCount}枚のスライドで簡易レイアウトを使用しました（bbox 抽出失敗）`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Skeleton placeholder (empty workspace)
   if (slides.length === 0 && phase !== 'ready') {
     return (
       <div className="flex h-full w-full flex-col overflow-hidden">
@@ -71,6 +220,16 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
           <span className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
             {isStreaming ? 'シナリオ — 生成中...' : 'シナリオ'}
           </span>
+          {onModeChange && (
+            <div className="ml-auto">
+              <ModeToggle
+                mode={mode}
+                onChange={onModeChange}
+                imageModeDisabled={imageModeDisabled}
+                imageModeDisabledHint={imageModeDisabledHint}
+              />
+            </div>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
           {[1, 2, 3, 4, 5].map((n) => (
@@ -93,6 +252,12 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
     );
   }
 
+  const generateButtonDisabled = isStreaming || (isImageMode && !imagesReady);
+  const generateButtonHint =
+    isImageMode && !imagesReady
+      ? '全スライドの画像生成が完了すると有効になります'
+      : undefined;
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* Panel header */}
@@ -109,20 +274,51 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {slides.length > 0 && !pptx && onRequestGenerate && (
+          {onModeChange && (
+            <ModeToggle
+              mode={mode}
+              onChange={onModeChange}
+              imageModeDisabled={imageModeDisabled}
+              imageModeDisabledHint={imageModeDisabledHint}
+              disabled={isStreaming || isGenerating || anyImageGenerating}
+            />
+          )}
+          {isImageMode && slides.length > 0 && onGenerateAllImages && hasIdleOrErrorImage && (
             <button
-              onClick={onRequestGenerate}
-              disabled={isStreaming}
+              onClick={onGenerateAllImages}
+              disabled={isStreaming || anyImageGenerating}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all hover:opacity-90 disabled:opacity-50"
+              style={{ background: 'var(--surface-secondary)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
+            >
+              <ImagePlus size={13} />
+              {anyImageGenerating ? '生成中...' : '全画像生成'}
+            </button>
+          )}
+          {slides.length > 0 && (isImageMode || !pptx) && (
+            <button
+              onClick={
+                mode === 'image-editable'
+                  ? handleImageEditablePptx
+                  : mode === 'image-bleed'
+                    ? handleImageModePptx
+                    : onRequestGenerate
+              }
+              disabled={generateButtonDisabled || isGenerating}
+              title={generateButtonHint}
               className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-all hover:opacity-90 hover:shadow-md disabled:opacity-50"
               style={{ background: 'linear-gradient(135deg, var(--accent), #5C2D91)' }}
             >
               <Sparkles size={13} />
-              PPTX を生成
+              {isGenerating
+                ? mode === 'image-editable'
+                  ? 'bbox 抽出中...'
+                  : '生成中...'
+                : 'PPTX を生成'}
             </button>
           )}
-          {pptx && (
+          {pptx && mode === 'code' && (
             <button
-              onClick={handleDownload}
+              onClick={handleCodeDownload}
               disabled={isGenerating}
               className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               style={{ background: 'var(--accent)' }}
@@ -194,67 +390,19 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
 
         <div className="px-3 py-2">
           {slides.map((slide) => (
-              <div
-                key={slide.id}
-                className="mb-3 rounded-lg border"
-                style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
-              >
-                {/* Slide header */}
-                <div className="flex items-start gap-3 px-3 py-3 sm:px-4">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white" style={{ background: 'var(--accent)' }}>
-                    {slide.number}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <span className="text-sm font-bold leading-snug" style={{ color: 'var(--foreground)' }}>
-                        {slide.title}
-                      </span>
-                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                        {slide.icon && (
-                          <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}>
-                            🎨 {slide.icon}
-                          </span>
-                        )}
-                        <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}>
-                          <Layout size={10} className="mr-0.5 inline" />
-                          {LAYOUT_LABELS[slide.layout] || slide.layout}
-                        </span>
-                      </div>
-                    </div>
-                    {slide.keyMessage && (
-                      <p className="mt-1.5 text-xs font-medium leading-snug" style={{ color: 'var(--accent)' }}>
-                        💡 {slide.keyMessage}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Content — always fully visible */}
-                <div className="border-t px-3 pb-3 pt-2.5 sm:px-4" style={{ borderColor: 'var(--border)' }}>
-                  {slide.bullets.length > 0 && (
-                    <div className="space-y-1 pl-1 sm:pl-10">
-                      {slide.bullets.map((b, i) => (
-                        <p key={i} className="text-[13px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                          <span style={{ color: 'var(--accent)', marginRight: 6 }}>•</span>{b}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-3 rounded-lg border p-3 sm:pl-10" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
-                    <div className="mb-1.5 flex items-center gap-1.5">
-                      <MessageSquare size={12} style={{ color: 'var(--text-secondary)' }} />
-                      <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>スピーカーノート</span>
-                    </div>
-                    <div className="prose prose-sm max-w-none text-xs leading-relaxed">
-                      <Markdown remarkPlugins={[remarkGfm]}>{slide.notes}</Markdown>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <SlideCard
+              key={slide.id}
+              slide={slide}
+              mode={mode}
+              isStreaming={isStreaming}
+              onGenerateImage={onGenerateImage}
+              onRegenerateImage={onRegenerateImage}
+              onUpdateSlideBody={onUpdateSlideBody}
+            />
           ))}
         </div>
 
-        {pptx && (
+        {pptx && mode === 'code' && (
           <div className="px-3 pb-3">
             <div className="rounded-xl border p-4" style={{ borderColor: 'var(--accent)', background: 'var(--accent-light)' }}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -266,7 +414,7 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
                   </div>
                 </div>
                 <button
-                  onClick={handleDownload}
+                  onClick={handleCodeDownload}
                   disabled={isGenerating}
                   className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                   style={{ background: 'var(--accent)' }}
@@ -308,6 +456,105 @@ export function SlidePanel({ slideWork, onRequestGenerate }: SlidePanelProps) {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+interface SlideCardProps {
+  slide: SlideItem;
+  mode: GenerationMode;
+  isStreaming: boolean;
+  onGenerateImage?: (slideNumber: number) => void;
+  onRegenerateImage?: (slideNumber: number) => void;
+  onUpdateSlideBody?: (slideNumber: number, bodyMarkdown: string) => void;
+}
+
+function SlideCard({ slide, mode, isStreaming, onGenerateImage, onRegenerateImage, onUpdateSlideBody }: SlideCardProps) {
+  const isGenerating = slide.imageStatus === 'generating';
+  const showImageMode = mode === 'image-bleed' || mode === 'image-editable';
+
+  return (
+    <div
+      className="mb-3 rounded-lg border transition-opacity"
+      style={{
+        borderColor: 'var(--border)',
+        background: 'var(--surface)',
+        opacity: isGenerating ? 0.85 : 1,
+      }}
+    >
+      {/* Slide header */}
+      <div className="flex items-start gap-3 px-3 py-3 sm:px-4">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white" style={{ background: 'var(--accent)' }}>
+          {slide.number}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <span className="text-sm font-bold leading-snug" style={{ color: 'var(--foreground)' }}>
+              {slide.title}
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+              {slide.icon && (
+                <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}>
+                  🎨 {slide.icon}
+                </span>
+              )}
+              <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}>
+                <Layout size={10} className="mr-0.5 inline" />
+                {LAYOUT_LABELS[slide.layout] || slide.layout}
+              </span>
+            </div>
+          </div>
+          {slide.keyMessage && (
+            <p className="mt-1.5 text-xs font-medium leading-snug" style={{ color: 'var(--accent)' }}>
+              💡 {slide.keyMessage}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="border-t px-3 pb-3 pt-2.5 sm:px-4" style={{ borderColor: 'var(--border)' }}>
+        {slide.bullets.length > 0 && (
+          <div className="space-y-1 pl-1 sm:pl-10">
+            {slide.bullets.map((b, i) => (
+              <p key={i} className="text-[13px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                <span style={{ color: 'var(--accent)', marginRight: 6 }}>•</span>{b}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {/* Image-then-pptx mode extras */}
+        {showImageMode && (onGenerateImage || onRegenerateImage) && (
+          <div className="mt-3 space-y-2 sm:pl-10">
+            <SlideImageCard
+              slide={slide}
+              onGenerate={onGenerateImage ?? (() => undefined)}
+              onRegenerate={onRegenerateImage ?? (() => undefined)}
+              disabled={isStreaming}
+              showEditableBadge={mode === 'image-editable'}
+            />
+            {onUpdateSlideBody && onRegenerateImage && (
+              <SlideBodyEditor
+                slide={slide}
+                onUpdate={onUpdateSlideBody}
+                onRegenerateImage={onRegenerateImage}
+                disabled={isStreaming}
+              />
+            )}
+          </div>
+        )}
+
+        <div className="mt-3 rounded-lg border p-3 sm:pl-10" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <MessageSquare size={12} style={{ color: 'var(--text-secondary)' }} />
+            <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>スピーカーノート</span>
+          </div>
+          <div className="prose prose-sm max-w-none text-xs leading-relaxed">
+            <Markdown remarkPlugins={[remarkGfm]}>{slide.notes}</Markdown>
+          </div>
+        </div>
       </div>
     </div>
   );

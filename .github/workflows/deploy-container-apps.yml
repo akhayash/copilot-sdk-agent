@@ -82,19 +82,16 @@ jobs:
                 "NODE_ENV=production" \
                 "PORT=3000" \
                 "GITHUB_TOKEN=secretref:github-token" \
-                "TAVILY_API_KEY=secretref:tavily-api-key" \
                 "MODEL_NAME=${{ vars.MODEL_NAME || 'claude-opus-4.6' }}" \
               --secrets \
-                "github-token=${{ secrets.APP_GITHUB_TOKEN }}" \
-                "tavily-api-key=${{ secrets.TAVILY_API_KEY }}"
+                "github-token=${{ secrets.APP_GITHUB_TOKEN }}"
           else
             echo "Updating existing Container App..."
             az containerapp secret set \
               --name ca-${{ env.APP_NAME }} \
               --resource-group ${{ env.RESOURCE_GROUP }} \
               --secrets \
-                "github-token=${{ secrets.APP_GITHUB_TOKEN }}" \
-                "tavily-api-key=${{ secrets.TAVILY_API_KEY }}" 2>/dev/null || true
+                "github-token=${{ secrets.APP_GITHUB_TOKEN }}" 2>/dev/null || true
 
             az containerapp update \
               --name ca-${{ env.APP_NAME }} \

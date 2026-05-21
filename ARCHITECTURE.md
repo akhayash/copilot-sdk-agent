@@ -89,7 +89,7 @@ copilot-sdk-agent/
 │   │   │   └── client.ts             # CopilotClient シングルトン
 │   │   ├── tools/
 │   │   │   ├── scenario-tool.ts       # set_scenario / update_slide ツール
-│   │   │   └── web-search-tool.ts     # Tavily Web検索ツール
+│   │   │   └── scenario-tool.ts        # set_scenario / update_slide ツール
 │   │   └── skills/
 │   │       └── pptxgen-adapter.ts     # pptxgenjs による Skill 実装
 │   │
@@ -205,5 +205,5 @@ UIモデルセレクター: Claude Opus 4.6, Claude Sonnet 4.6, GPT-4.1, GPT-4o,
 - Node.js ≥ 24
 - pnpm
 - `GITHUB_TOKEN` — Copilot SDK 認証用
-- `TAVILY_API_KEY` — Web検索ツール（任意）
+- `GITHUB_TOKEN` — Copilot SDK 認証（必須）
 - `MODEL_NAME` — モデル指定（任意）

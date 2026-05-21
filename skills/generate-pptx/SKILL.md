@@ -10,6 +10,14 @@ allowed-tools:
 PptxGenJS のコードを直接出力し、アプリがサーバーサイドで実行して PPTX を生成するスキルです。
 JSON ではなく JavaScript コードを出力することで、カードレイアウト、マルチカラム、統計ハイライト等の自由なデザインが可能です。
 
+## 生成モード
+
+このスキルは `code` モード（このドキュメントが定義する従来の動作）で動作します。
+PPTX 生成パイプラインは 2 つのモードを持ちます：
+
+- **`code` モード**（このスキル）: Markdown → PptxGenJS コード を直接生成して `/api/skills/pptx` で実行する。完全に編集可能な PPTX を出力する。`LAYOUT_WIDE`（13.33 × 7.5 inches）を使用。
+- **`image-then-pptx` モード**: スライド画像 → bbox 抽出 → PPTX 再構築 のパイプライン。詳細は `skills/pptx-from-image/SKILL.md` を参照。16:9（10 × 5.625 inches）を使用し、bbox 抽出が失敗したスライドは Hybrid C フォールバック（背景画像 + シナリオ本文オーバーレイ）で復元される。レスポンスヘッダ `x-pptx-fallback` で部分／全面フォールバックを通知する。
+
 ## 出力フォーマット
 
 ` ```javascript ` コードブロックで PptxGenJS コードを出力すること。

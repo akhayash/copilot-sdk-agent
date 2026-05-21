@@ -14,6 +14,8 @@ export interface ScenarioSlide {
   bullets: string[];
   notes: string;
   icon?: string;
+  /** Detailed body markdown (paragraphs, subheadings) for refined story / image generation */
+  bodyMarkdown?: string;
 }
 
 export interface ScenarioDesignBrief {
@@ -47,6 +49,7 @@ export function createScenarioTool(
       'Available layouts: title, agenda, section, bullets, cards, stats, comparison, timeline, diagram, summary. ' +
       'The layout and icon are guidance for the later PPTX design step, not a rigid rendering contract. ' +
       'When helpful, include a designBrief describing tone, audience, visual style, density, and layout approach. ' +
+      'IMPORTANT: For each slide, include `bodyMarkdown` — 1-3 short paragraphs (plus optional subheadings) that flesh out the slide body beyond bullets. This is the primary source text for image generation in image-then-pptx mode AND becomes the refined narrative shown on slides. Treat it as essentially required; only omit when the slide is purely a title / section divider with no body content. ' +
       'Available icons: arrow-trending-up, brain, building, calendar, chart, checkmark-circle, cloud, code, data-trending, document, globe, lightbulb, link, lock-closed, money, people-team, rocket, search, settings, shield, sparkle, star, target, warning.',
     parameters: {
       type: 'object' as const,
@@ -80,6 +83,10 @@ export function createScenarioTool(
               icon: {
                 type: 'string',
                 description: 'Optional icon hint from available set (e.g. brain, cloud, rocket)',
+              },
+              bodyMarkdown: {
+                type: 'string',
+                description: 'Refined slide body content — 1-3 short paragraphs (~80-200 words total) with optional subheadings. This is the source text for image generation in image-then-pptx mode, and the narrative shown on slides for refined stories. Strongly recommended on every content slide; omit only for pure title/section divider slides.',
               },
             },
             required: ['number', 'title', 'keyMessage', 'layout', 'bullets', 'notes'],
@@ -138,6 +145,7 @@ export function createUpdateSlideTool(
         bullets: { type: 'array', items: { type: 'string' }, description: 'Updated content items' },
         notes: { type: 'string', description: 'Speaker notes — required, 2-3 sentences of what to say' },
         icon: { type: 'string', description: 'Updated icon name' },
+        bodyMarkdown: { type: 'string', description: 'Refined slide body content — 1-3 short paragraphs (~80-200 words total) with optional subheadings. Source text for image generation in image-then-pptx mode. Strongly recommended on every content slide.' },
       },
       required: ['number', 'title', 'keyMessage', 'layout', 'bullets', 'notes'],
     },

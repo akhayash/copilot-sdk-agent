@@ -45,9 +45,19 @@ export interface SlideItem {
   code: string | null;
   /** Visual style hint */
   accent: 'blue' | 'green' | 'purple' | 'teal' | 'orange';
+  /** Detailed body markdown (paragraphs, subheadings) for refined story mode */
+  bodyMarkdown?: string | null;
+  /** URL to fetch the generated image (e.g. `/api/skills/image/[id]`). Never a data URL. */
+  imageUrl?: string | null;
+  /** Prompt used to generate the image (kept for re-generation) */
+  imagePrompt?: string | null;
+  /** Per-slide image generation status */
+  imageStatus?: 'idle' | 'generating' | 'ready' | 'error';
+  /** bbox-extraction status (image-editable mode only) */
+  layoutStatus?: 'idle' | 'extracting' | 'ready' | 'fallback' | 'error';
 }
 
-export type SlidePhase = 'empty' | 'planning' | 'story' | 'generating' | 'ready';
+export type SlidePhase = 'empty' | 'planning' | 'story' | 'imagining' | 'generating' | 'ready';
 
 export interface SlideWork {
   phase: SlidePhase;
@@ -60,4 +70,11 @@ export interface SlideWork {
   thinking: string | null;
   /** Whether the AI is currently streaming */
   isStreaming: boolean;
+  /**
+   * Generation mode. Default 'code'.
+   * - 'code': AI generates pptxgenjs code, executed server-side.
+   * - 'image-bleed': generated images placed full-bleed on each slide.
+   * - 'image-editable': vision LLM extracts bbox layout → native editable PPTX.
+   */
+  generationMode?: 'code' | 'image-bleed' | 'image-editable';
 }
