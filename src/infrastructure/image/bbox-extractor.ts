@@ -14,30 +14,36 @@
  * Per-call timeout defaults to 20s via AbortController.
  */
 
-import { promises as fs } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { promises as fs } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
 
-import { getCopilotClient, getSessionOptions } from '@/infrastructure/copilot/client';
+import {
+  getCopilotClient,
+  getSessionOptions,
+} from "@/infrastructure/copilot/client";
 import {
   SlideLayoutSchema,
   type SlideLayout,
-} from '@/domain/entities/slide-layout';
+} from "@/domain/entities/slide-layout";
 
 const DEFAULT_TIMEOUT_MS = 300_000;
 
 export class BboxExtractionError extends Error {
-  constructor(message: string, public reason: string) {
+  constructor(
+    message: string,
+    public reason: string,
+  ) {
     super(message);
-    this.name = 'BboxExtractionError';
+    this.name = "BboxExtractionError";
   }
 }
 
 export class BboxTimeoutError extends BboxExtractionError {
   constructor(message: string) {
-    super(message, 'timeout');
-    this.name = 'BboxTimeoutError';
+    super(message, "timeout");
+    this.name = "BboxTimeoutError";
   }
 }
 
@@ -54,27 +60,30 @@ export function getBboxConcurrency(): number {
 }
 
 const SYSTEM_PROMPT = [
-  'You are a layout extractor for slide images.',
-  'Analyze the attached slide image and return a JSON object that strictly matches this schema:',
-  '{',
+  "You are a layout extractor for slide images.",
+  "Analyze the attached slide image and return a JSON object that strictly matches this schema:",
+  "{",
   '  "slideNumber": <int>,',
   '  "elements": [',
   '    { "id": "<unique>", "type": "textbox", "bbox": [x,y,w,h], "z": 1|2|3|4, "text": "...", "fontSize": <number>, "bold": <bool?>, "align": "left"|"center"|"right"?, "color": "#RRGGBB"? },',
   '    { "id": "<unique>", "type": "auto_shape", "shape": "RECTANGLE", "bbox": [x,y,w,h], "z": 1|2|3|4, "fill": "#RRGGBB"?, "line": { "color": "#RRGGBB", "width": <number> }? },',
   '    { "id": "<unique>", "type": "line", "bbox": [x,y,w,h], "z": 1|2|3|4, "line": { "color": "#RRGGBB", "width": <number> } },',
   '    { "id": "<unique>", "type": "picture", "bbox": [x,y,w,h], "z": 1|2|3|4, "sourceCrop": [x,y,w,h] }',
-  '  ]',
-  '}',
-  '',
-  'Constraints:',
-  '- All bbox values are slide-relative in 0.0..1.0 (NOT pixels, NOT EMU).',
-  '- z-order: 1=background picture, 2=shapes/borders, 3=textboxes, 4=top-level highlights.',
+  "  ]",
+  "}",
+  "",
+  "Constraints:",
+  "- All bbox values are slide-relative in 0.0..1.0 (NOT pixels, NOT EMU).",
+  "- z-order: 1=background picture, 2=shapes/borders, 3=textboxes, 4=top-level highlights.",
   '- ALL readable text on the slide MUST be represented as separate "textbox" elements. NEVER return a single full-slide picture with no textboxes.',
-  '- ids must be unique within the slide.',
+  "- ids must be unique within the slide.",
   '- Hex colors include the leading "#".',
-  '',
-  'Output ONLY the JSON object, no markdown fences, no commentary.',
-].join('\n');
+  "- CRITICAL: For each textbox bbox, add 5% extra width and 10% extra height beyond the visible text region to prevent font-metric clipping in PowerPoint. Example: if text visually spans x=0.05..0.45, set bbox x=0.03, w=0.44.",
+  '- CRITICAL: Do NOT split a single logical text run into multiple textbox elements. If a heading reads "Foo Bar", return ONE textbox with text="Foo Bar", not two.',
+  "- If text appears in two columns, create one textbox per column — never split a column's text into multiple boxes.",
+  "",
+  "Output ONLY the JSON object, no markdown fences, no commentary.",
+].join("\n");
 
 /**
  * Strip ```json fences and stray prose to recover the JSON object.
@@ -87,8 +96,8 @@ function extractJsonObject(raw: string): string {
     return fenced[1].trim();
   }
   // Best effort: find first '{' and last '}'
-  const first = trimmed.indexOf('{');
-  const last = trimmed.lastIndexOf('}');
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
   if (first >= 0 && last > first) {
     return trimmed.slice(first, last + 1);
   }
@@ -114,31 +123,33 @@ async function runVisionOnce(args: {
   const copilot = await getCopilotClient();
   const sessionOpts = await getSessionOptions({ streaming: false, model });
 
-  console.log(`[bbox] slide=${slideNumber} model=${sessionOpts.model ?? '(default)'} timeout=${timeoutMs}ms`);
+  console.log(
+    `[bbox] slide=${slideNumber} model=${sessionOpts.model ?? "(default)"} timeout=${timeoutMs}ms`,
+  );
 
   const session = await copilot.createSession({
     ...sessionOpts,
-    systemMessage: { mode: 'append' as const, content: SYSTEM_PROMPT },
+    systemMessage: { mode: "append" as const, content: SYSTEM_PROMPT },
     onPermissionRequest: (req) => {
-      if (req.kind === 'custom-tool') return { kind: 'approved' };
-      if (req.kind === 'read') {
-        const p = String((req as Record<string, unknown>).path ?? '');
+      if (req.kind === "custom-tool") return { kind: "approved" };
+      if (req.kind === "read") {
+        const p = String((req as Record<string, unknown>).path ?? "");
         const normalizedP = path.normalize(p).toLowerCase();
         // Allow reading the attachment temp file (compare by normalized path AND basename UUID)
         // to handle Windows backslash vs forward-slash differences.
         if (
           normalizedP === normalizedImagePath ||
           p.includes(imageBasename) ||
-          p.includes('copilot-tool-output')
+          p.includes("copilot-tool-output")
         ) {
           console.log(`[bbox] approved read: ${p}`);
-          return { kind: 'approved' };
+          return { kind: "approved" };
         }
         console.log(`[bbox] denied read: ${p}`);
       } else {
         console.log(`[bbox] permission request kind=${req.kind}`);
       }
-      return { kind: 'denied-by-rules' };
+      return { kind: "denied-by-rules" };
     },
   });
 
@@ -150,13 +161,21 @@ async function runVisionOnce(args: {
   const ac = new AbortController();
   const onParentAbort = () => ac.abort();
   if (signal) {
-    if (signal.aborted) { ac.abort(); }
-    else { signal.addEventListener('abort', onParentAbort, { once: true }); }
+    if (signal.aborted) {
+      ac.abort();
+    } else {
+      signal.addEventListener("abort", onParentAbort, { once: true });
+    }
   }
   const abortPromise = new Promise<never>((_, reject) => {
     ac.signal.addEventListener(
-      'abort',
-      () => reject(new BboxTimeoutError(`bbox extraction aborted/timeout (${timeoutMs}ms)`)),
+      "abort",
+      () =>
+        reject(
+          new BboxTimeoutError(
+            `bbox extraction aborted/timeout (${timeoutMs}ms)`,
+          ),
+        ),
       { once: true },
     );
   });
@@ -166,17 +185,19 @@ async function runVisionOnce(args: {
     // sendAndWait returns the last assistant.message event (or undefined).
     const result = await Promise.race([
       session.sendAndWait(
-        { prompt, attachments: [{ type: 'file', path: imagePath }] },
+        { prompt, attachments: [{ type: "file", path: imagePath }] },
         timeoutMs,
       ),
       abortPromise,
     ]);
-    const content = result?.data?.content ?? '';
-    console.log(`[bbox] slide=${slideNumber} response length=${content.length} chars`);
+    const content = result?.data?.content ?? "";
+    console.log(
+      `[bbox] slide=${slideNumber} response length=${content.length} chars`,
+    );
     return content;
   } finally {
     clearTimeout(timer);
-    if (signal) signal.removeEventListener('abort', onParentAbort);
+    if (signal) signal.removeEventListener("abort", onParentAbort);
   }
 }
 
@@ -193,7 +214,7 @@ export async function extractLayout(
   opts: ExtractLayoutOptions,
 ): Promise<SlideLayout> {
   if (!imageBuffer || imageBuffer.length === 0) {
-    throw new BboxExtractionError('empty image buffer', 'empty-input');
+    throw new BboxExtractionError("empty image buffer", "empty-input");
   }
 
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -214,7 +235,10 @@ export async function extractLayout(
     }
 
     // Retry once with the schema error as hint
-    const hint = parsed1.error.issues.slice(0, 3).map((i) => i.message).join('; ');
+    const hint = parsed1.error.issues
+      .slice(0, 3)
+      .map((i) => i.message)
+      .join("; ");
     const raw2 = await runVisionOnce({
       imagePath: tmpFile,
       slideNumber: opts.slideNumber,
@@ -228,8 +252,8 @@ export async function extractLayout(
     }
 
     throw new BboxExtractionError(
-      `bbox extraction validation failed after retry: ${parsed2.error.issues.map((i) => i.message).join('; ')}`,
-      'schema-violation',
+      `bbox extraction validation failed after retry: ${parsed2.error.issues.map((i) => i.message).join("; ")}`,
+      "schema-violation",
     );
   } finally {
     fs.unlink(tmpFile).catch(() => undefined);

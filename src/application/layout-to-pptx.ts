@@ -12,10 +12,13 @@
  *   the caller-provided dimensions via getSlideDims()).
  */
 
-import sharp from 'sharp';
-import type PptxGenJS from 'pptxgenjs';
+import sharp from "sharp";
+import type PptxGenJS from "pptxgenjs";
 
-import type { SlideLayout, LayoutElement } from '@/domain/entities/slide-layout';
+import type {
+  SlideLayout,
+  LayoutElement,
+} from "@/domain/entities/slide-layout";
 
 interface SlideDimsInches {
   w: number;
@@ -28,10 +31,10 @@ interface SlideDimsInches {
  * map to a known size.
  */
 function getSlideDims(pres: PptxGenJS): SlideDimsInches {
-  const name = (pres.layout as string) || '';
-  if (name === 'LAYOUT_WIDE') return { w: 13.333, h: 7.5 };
-  if (name === 'LAYOUT_16x10') return { w: 10, h: 6.25 };
-  if (name === 'LAYOUT_4x3') return { w: 10, h: 7.5 };
+  const name = (pres.layout as string) || "";
+  if (name === "LAYOUT_WIDE") return { w: 13.333, h: 7.5 };
+  if (name === "LAYOUT_16x10") return { w: 10, h: 6.25 };
+  if (name === "LAYOUT_4x3") return { w: 10, h: 7.5 };
   // Default 16:9
   return { w: 10, h: 5.625 };
 }
@@ -52,7 +55,7 @@ function bboxToInches(
 /** Strip leading '#' from a hex color; pptxgenjs expects no '#'. */
 function hex(color: string | undefined): string | undefined {
   if (!color) return undefined;
-  return color.startsWith('#') ? color.slice(1) : color;
+  return color.startsWith("#") ? color.slice(1) : color;
 }
 
 /**
@@ -67,7 +70,7 @@ async function cropToDataUri(
   const srcW = meta.width ?? 0;
   const srcH = meta.height ?? 0;
   if (srcW <= 0 || srcH <= 0) {
-    throw new Error('source image has no dimensions');
+    throw new Error("source image has no dimensions");
   }
   const [sx, sy, sw, sh] = sourceCrop;
   // Clamp to integer pixel bounds inside the source.
@@ -79,7 +82,7 @@ async function cropToDataUri(
     .extract({ left, top, width, height })
     .png()
     .toBuffer();
-  return `data:image/png;base64,${png.toString('base64')}`;
+  return `data:image/png;base64,${png.toString("base64")}`;
 }
 
 /**
@@ -112,35 +115,49 @@ async function renderElement(
   const rect = bboxToInches(el.bbox, dims);
 
   switch (el.type) {
-    case 'picture': {
+    case "picture": {
       const data = await cropToDataUri(sourceImage, el.sourceCrop);
       slide.addImage({ data, ...rect });
       return;
     }
-    case 'auto_shape': {
+    case "auto_shape": {
       const opts: PptxGenJS.ShapeProps = { ...rect };
       if (el.fill) opts.fill = { color: hex(el.fill) as string };
       if (el.line) {
-        opts.line = { color: hex(el.line.color) as string, width: el.line.width };
+        opts.line = {
+          color: hex(el.line.color) as string,
+          width: el.line.width,
+        };
       }
       slide.addShape(pres.ShapeType.rect, opts);
       return;
     }
-    case 'line': {
+    case "line": {
       slide.addShape(pres.ShapeType.line, {
         ...rect,
         line: { color: hex(el.line.color) as string, width: el.line.width },
       });
       return;
     }
-    case 'textbox': {
+    case "textbox": {
+      // Add generous inset so text doesn't touch the bbox edge, and enable
+      // autoFit + wrap so text is never silently clipped when the Vision-extracted
+      // bbox is slightly tighter than the rendered font metrics require.
+      const INSET_IN = 0.03; // ~2px padding at 10-inch slide width
       const textOpts: PptxGenJS.TextPropsOptions = {
-        ...rect,
+        x: Math.max(0, rect.x - INSET_IN),
+        y: Math.max(0, rect.y - INSET_IN),
+        w: rect.w + INSET_IN * 2,
+        h: rect.h + INSET_IN * 2,
         fontSize: el.fontSize,
         bold: el.bold ?? false,
         italic: el.italic ?? false,
-        align: el.align ?? 'left',
-        valign: 'top',
+        align: el.align ?? "left",
+        valign: "top",
+        // Prevent text from being clipped: shrink font if still too big after expansion
+        autoFit: false,
+        shrinkText: true,
+        wrap: true,
       };
       if (el.color) textOpts.color = hex(el.color);
       slide.addText(el.text, textOpts);
