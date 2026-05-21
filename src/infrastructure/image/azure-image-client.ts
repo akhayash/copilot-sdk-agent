@@ -115,24 +115,38 @@ function buildClient(config: ImageClientConfig): ImageClient {
       // NOTE: gpt-image-1 / gpt-image-2 do NOT accept `response_format`.
       // The API always returns `b64_json` for these models, so we must omit
       // the parameter to avoid "Unknown parameter" 400 errors.
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          prompt,
-          size,
-          n,
-        }),
-      });
+      const maxAttempts = 3;
+      let lastError: Error | null = null;
+      let json: ImageGenerationResponse | null = null;
 
-      if (!response.ok) {
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ prompt, size, n }),
+        });
+
+        if (response.ok) {
+          json = (await response.json()) as ImageGenerationResponse;
+          break;
+        }
+
         const errorBody = await response.text().catch(() => '');
-        throw new Error(
+        lastError = new Error(
           `Azure image generation failed (${response.status} ${response.statusText}): ${errorBody.slice(0, 500)}`,
         );
+
+        // Only retry on 5xx (server-side) errors
+        if (response.status < 500 || attempt === maxAttempts) {
+          throw lastError;
+        }
+
+        const delayMs = attempt * 3000;
+        console.warn(`[image-client] Attempt ${attempt} failed with ${response.status}, retrying in ${delayMs}ms…`);
+        await new Promise((r) => setTimeout(r, delayMs));
       }
 
-      const json = (await response.json()) as ImageGenerationResponse;
+      if (!json) throw lastError ?? new Error('Image generation failed after retries');
       if (!json.data || json.data.length === 0) {
         throw new Error('Azure image generation returned no data');
       }
