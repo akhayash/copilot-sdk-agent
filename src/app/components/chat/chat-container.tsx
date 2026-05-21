@@ -173,6 +173,13 @@ export function ChatContainer() {
     }
   }, [generateOneImage]);
 
+  const handleClearAllImages = useCallback(() => {
+    setSlideWork((prev) => ({
+      ...prev,
+      slides: prev.slides.map((s) => ({ ...s, imageStatus: 'idle' as const, imageUrl: undefined })),
+    }));
+  }, []);
+
   const handleUpdateSlideBody = useCallback((slideNumber: number, bodyMarkdown: string) => {
     setSlideWork((prev) => ({
       ...prev,
@@ -489,6 +496,7 @@ export function ChatContainer() {
             onRegenerateImage={handleRegenerateImage}
             onGenerateAllImages={handleGenerateAllImages}
             onUpdateSlideBody={handleUpdateSlideBody}
+            onClearAllImages={handleClearAllImages}
             imageModeDisabled={imageModeDisabled}
             imageModeDisabledHint={imageModeDisabledHint}
           />

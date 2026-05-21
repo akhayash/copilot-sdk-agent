@@ -255,6 +255,8 @@ interface SlidePanelProps {
   onRegenerateImage?: (slideNumber: number) => void;
   onGenerateAllImages?: () => void;
   onUpdateSlideBody?: (slideNumber: number, bodyMarkdown: string) => void;
+  /** Called when server reports 410 (image cache expired). Resets all slide imageStatus to idle. */
+  onClearAllImages?: () => void;
   imageModeDisabled?: boolean;
   imageModeDisabledHint?: string;
 }
@@ -267,6 +269,7 @@ export function SlidePanel({
   onRegenerateImage,
   onGenerateAllImages,
   onUpdateSlideBody,
+  onClearAllImages,
   imageModeDisabled = false,
   imageModeDisabledHint,
 }: SlidePanelProps) {
@@ -398,6 +401,10 @@ export function SlidePanel({
       });
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: 'Unknown error' }));
+        if (response.status === 410) {
+          onClearAllImages?.();
+          throw new Error('画像キャッシュが期限切れです。「画像を生成」ボタンでもう一度生成してください。');
+        }
         throw new Error(err.error || `Failed: ${response.status}`);
       }
       const fallback = response.headers.get('x-pptx-fallback');
@@ -453,6 +460,10 @@ export function SlidePanel({
       });
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: 'Unknown error' }));
+        if (response.status === 410) {
+          onClearAllImages?.();
+          throw new Error('画像キャッシュが期限切れです。「画像を生成」ボタンでもう一度生成してください。');
+        }
         throw new Error(err.error || `Failed: ${response.status}`);
       }
       const fallbackCount = response.headers.get('x-pptx-fallback-count');
