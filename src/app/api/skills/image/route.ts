@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const [first] = await generateImage(prompt, { size: '1024x1024', n: 1 });
+    const [first] = await generateImage(prompt, { size: '1536x1024', n: 1 });
     if (!first) {
       return NextResponse.json({ error: 'No image returned by upstream model' }, { status: 502 });
     }

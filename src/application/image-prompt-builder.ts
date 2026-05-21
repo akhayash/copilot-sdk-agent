@@ -103,7 +103,7 @@ export function buildImagePrompt(slide: SlideItem, brief: DesignBrief | null): s
   const context = collectContext(slide);
 
   const parts: string[] = [
-    'You are designing ONE complete 16:9 presentation slide (aspect ratio 3:2 acceptable, fill the canvas).',
+    'You are designing ONE complete presentation slide in strict 16:9 aspect ratio (widescreen landscape). Fill the entire canvas edge-to-edge with your composition — no letterboxing, no pillarboxing, no empty margins at top/bottom/left/right.',
     `Slide title (render verbatim in Japanese): 「${title}」`,
     `Key takeaway (render verbatim as the slide's hero message in Japanese): 「${keyMessage}」`,
     layoutGuidance(slide.layout),
