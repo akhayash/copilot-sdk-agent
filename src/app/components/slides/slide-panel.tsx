@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Layers, Presentation, Download, Check, Code, MessageSquare, Layout, Sparkles, ImagePlus } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -19,6 +19,112 @@ const LAYOUT_LABELS: Record<string, string> = {
   bullets: '箇条書き', cards: 'カード並列', stats: '統計ハイライト',
   comparison: '比較', timeline: 'タイムライン', diagram: '概念図', summary: 'まとめ',
 };
+
+/** Contextual guidance bar shown in image modes — replaces header 全画像生成 button. */
+function ImageWorkflowBar({
+  anyGenerating,
+  allReady,
+  hasIdle,
+  onGenerateAll,
+  disabled,
+}: {
+  anyGenerating: boolean;
+  allReady: boolean;
+  hasIdle: boolean;
+  onGenerateAll?: () => void;
+  disabled?: boolean;
+}) {
+  if (anyGenerating) {
+    return (
+      <div
+        className="border-b px-4 py-2 text-xs flex items-center gap-2"
+        style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+      >
+        <span className="animate-spin inline-block">⏳</span>
+        <span>画像を生成しています。完了したスライドから順次プレビューに表示されます...</span>
+      </div>
+    );
+  }
+  if (allReady) {
+    return (
+      <div
+        className="border-b px-4 py-2 text-xs flex items-center gap-2"
+        style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+      >
+        <Check size={13} className="flex-shrink-0" style={{ color: '#16a34a' }} />
+        <span style={{ color: '#16a34a' }}>全スライドの画像が揃いました — 上の「PPTX を生成」ボタンを押してください</span>
+      </div>
+    );
+  }
+  if (hasIdle && onGenerateAll) {
+    return (
+      <div
+        className="border-b px-4 py-2 text-xs flex items-center justify-between gap-3"
+        style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+      >
+        <span>📸 まず全スライドの画像を生成してください。チャットで指示するか、一括生成ボタンを使います。</span>
+        <button
+          onClick={onGenerateAll}
+          disabled={disabled}
+          className="flex-shrink-0 flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          style={{ background: 'var(--accent)' }}
+        >
+          <ImagePlus size={12} />
+          一括生成
+        </button>
+      </div>
+    );
+  }
+  return null;
+}
+
+/** Progress banner shown during image-editable bbox extraction (~2-3 min). */
+function BboxProgressBanner({
+  phase,
+  elapsed,
+  estimatedTotal,
+  slideCount,
+}: {
+  phase: 'vision' | 'pptx';
+  elapsed: number;
+  estimatedTotal: number;
+  slideCount: number;
+}) {
+  const progressPct = Math.min(95, Math.round((elapsed / estimatedTotal) * 100));
+  const remaining = Math.max(0, estimatedTotal - elapsed);
+  const remainingLabel = remaining > 60
+    ? `残り約${Math.ceil(remaining / 60)}分`
+    : remaining > 5
+      ? `残り約${remaining}秒`
+      : '間もなく完了';
+
+  const phaseLabel = phase === 'vision'
+    ? `Vision AI がスライド画像を解析中（${slideCount}枚並列）`
+    : 'PPTX を組み立て中...';
+  const phaseDetail = phase === 'vision'
+    ? '各スライドの要素・座標・テキストを抽出しています'
+    : 'ネイティブ編集可能なテキストボックスを配置しています';
+
+  return (
+    <div
+      className="border-b px-4 py-3 text-xs"
+      style={{ background: 'var(--accent-light)', borderColor: 'var(--accent)', borderLeftWidth: 3 }}
+    >
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="font-semibold" style={{ color: 'var(--accent)' }}>{phaseLabel}</span>
+        <span style={{ color: 'var(--text-secondary)' }}>{elapsed}s 経過 · {remainingLabel}</span>
+      </div>
+      <div className="mb-1.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>{phaseDetail}</div>
+      {/* Progress bar */}
+      <div className="h-1 w-full overflow-hidden rounded-full" style={{ background: 'var(--border)' }}>
+        <div
+          className="h-full rounded-full transition-all duration-1000"
+          style={{ width: `${progressPct}%`, background: 'linear-gradient(90deg, var(--accent), #5C2D91)' }}
+        />
+      </div>
+    </div>
+  );
+}
 
 interface SlidePanelProps {
   slideWork: SlideWork;
@@ -51,6 +157,38 @@ export function SlidePanel({
   const [isGenerating, setIsGenerating] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [bboxPhase, setBboxPhase] = useState<'vision' | 'pptx' | null>(null);
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Estimated total seconds for bbox extraction (parallel across slides, ~130s typical)
+  const estimatedTotalSeconds = useMemo(() => Math.min(280, slides.length * 75 + 30), [slides.length]);
+
+  const startBboxTimer = () => {
+    setElapsedSeconds(0);
+    setBboxPhase('vision');
+    elapsedTimerRef.current = setInterval(() => {
+      setElapsedSeconds((s) => s + 1);
+    }, 1000);
+  };
+
+  const stopBboxTimer = () => {
+    if (elapsedTimerRef.current) {
+      clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = null;
+    }
+    setBboxPhase(null);
+  };
+
+  // Switch phase label to 'pptx' when most of the estimated time has passed
+  useEffect(() => {
+    if (bboxPhase === 'vision' && elapsedSeconds >= estimatedTotalSeconds * 0.85) {
+      setBboxPhase('pptx');
+    }
+  }, [elapsedSeconds, bboxPhase, estimatedTotalSeconds]);
+
+  // Cleanup timer on unmount
+  useEffect(() => () => stopBboxTimer(), []);
 
   const imagesReady = useMemo(
     () => slides.length > 0 && slides.every((s) => s.imageStatus === 'ready' && Boolean(s.imageUrl)),
@@ -161,6 +299,7 @@ export function SlidePanel({
     if (!imagesReady) return;
     setIsGenerating(true);
     setError(null);
+    startBboxTimer();
     try {
       const imageIds = slides
         .filter((s) => s.imageStatus === 'ready' && s.imageUrl)
@@ -207,6 +346,7 @@ export function SlidePanel({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unknown error');
     } finally {
+      stopBboxTimer();
       setIsGenerating(false);
     }
   };
@@ -252,12 +392,6 @@ export function SlidePanel({
     );
   }
 
-  const generateButtonDisabled = isStreaming || (isImageMode && !imagesReady);
-  const generateButtonHint =
-    isImageMode && !imagesReady
-      ? '全スライドの画像生成が完了すると有効になります'
-      : undefined;
-
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* Panel header */}
@@ -283,55 +417,50 @@ export function SlidePanel({
               disabled={isStreaming || isGenerating || anyImageGenerating}
             />
           )}
-          {isImageMode && slides.length > 0 && onGenerateAllImages && hasIdleOrErrorImage && (
-            <button
-              onClick={onGenerateAllImages}
-              disabled={isStreaming || anyImageGenerating}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all hover:opacity-90 disabled:opacity-50"
-              style={{ background: 'var(--surface-secondary)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
-            >
-              <ImagePlus size={13} />
-              {anyImageGenerating ? '生成中...' : '全画像生成'}
-            </button>
-          )}
-          {slides.length > 0 && (isImageMode || !pptx) && (
-            <button
-              onClick={
-                mode === 'image-editable'
-                  ? handleImageEditablePptx
-                  : mode === 'image-bleed'
-                    ? handleImageModePptx
-                    : onRequestGenerate
+          {slides.length > 0 && (() => {
+            // Single primary action button — label & handler change by state
+            if (mode === 'code') {
+              if (pptx) {
+                return (
+                  <button
+                    onClick={handleCodeDownload}
+                    disabled={isGenerating}
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                    style={{ background: 'var(--accent)' }}
+                  >
+                    {isGenerating ? '生成中...' : downloaded ? <><Check size={12} /> 再ダウンロード</> : <><Download size={12} /> PPTX</>}
+                  </button>
+                );
               }
-              disabled={generateButtonDisabled || isGenerating}
-              title={generateButtonHint}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-all hover:opacity-90 hover:shadow-md disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, var(--accent), #5C2D91)' }}
-            >
-              <Sparkles size={13} />
-              {isGenerating
-                ? mode === 'image-editable'
-                  ? 'bbox 抽出中...'
-                  : '生成中...'
-                : 'PPTX を生成'}
-            </button>
-          )}
-          {pptx && mode === 'code' && (
-            <button
-              onClick={handleCodeDownload}
-              disabled={isGenerating}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-              style={{ background: 'var(--accent)' }}
-            >
-              {isGenerating ? (
-                '生成中...'
-              ) : downloaded ? (
-                <><Check size={12} /> 再ダウンロード</>
-              ) : (
-                <><Download size={12} /> PPTX</>
-              )}
-            </button>
-          )}
+              return (
+                <button
+                  onClick={onRequestGenerate}
+                  disabled={isStreaming || isGenerating}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-all hover:opacity-90 hover:shadow-md disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, var(--accent), #5C2D91)' }}
+                >
+                  <Sparkles size={13} />
+                  PPTX を生成
+                </button>
+              );
+            }
+            // Image modes
+            const label = isGenerating
+              ? mode === 'image-editable' ? `解析中... ${elapsedSeconds}s` : '生成中...'
+              : 'PPTX を生成';
+            return (
+              <button
+                onClick={mode === 'image-editable' ? handleImageEditablePptx : handleImageModePptx}
+                disabled={isStreaming || isGenerating || !imagesReady}
+                title={!imagesReady ? '全スライドの画像生成が完了すると有効になります' : undefined}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-all hover:opacity-90 hover:shadow-md disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, var(--accent), #5C2D91)' }}
+              >
+                <Sparkles size={13} />
+                {label}
+              </button>
+            );
+          })()}
         </div>
       </div>
 
@@ -339,6 +468,27 @@ export function SlidePanel({
         <div className="border-b px-4 py-2 text-xs text-red-600" style={{ background: 'var(--error-bg)', borderColor: 'var(--error-border)' }}>
           {error}
         </div>
+      )}
+
+      {/* bbox extraction progress banner */}
+      {bboxPhase && (
+        <BboxProgressBanner
+          phase={bboxPhase}
+          elapsed={elapsedSeconds}
+          estimatedTotal={estimatedTotalSeconds}
+          slideCount={slides.length}
+        />
+      )}
+
+      {/* Image workflow guidance bar — only in image modes when bbox not running */}
+      {isImageMode && !bboxPhase && slides.length > 0 && (
+        <ImageWorkflowBar
+          anyGenerating={anyImageGenerating}
+          allReady={imagesReady}
+          hasIdle={hasIdleOrErrorImage}
+          onGenerateAll={onGenerateAllImages}
+          disabled={isStreaming}
+        />
       )}
 
       {/* Scenario list */}
