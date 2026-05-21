@@ -131,10 +131,10 @@ async function runVisionOnce(args: {
   const session = await copilot.createSession({
     ...sessionOpts,
     systemMessage: { mode: "append" as const, content: SYSTEM_PROMPT },
-    onPermissionRequest: (req) => {
-      if (req.kind === "custom-tool") return { kind: "approved" };
+    onPermissionRequest: (req, _invocation) => {
+      if (req.kind === "custom-tool") return { kind: "approve-once" as const };
       if (req.kind === "read") {
-        const p = String((req as Record<string, unknown>).path ?? "");
+        const p = String((req as unknown as Record<string, unknown>).path ?? "");
         const normalizedP = path.normalize(p).toLowerCase();
         // Allow reading the attachment temp file (compare by normalized path AND basename UUID)
         // to handle Windows backslash vs forward-slash differences.
@@ -144,13 +144,13 @@ async function runVisionOnce(args: {
           p.includes("copilot-tool-output")
         ) {
           console.log(`[bbox] approved read: ${p}`);
-          return { kind: "approved" };
+          return { kind: "approve-once" as const };
         }
         console.log(`[bbox] denied read: ${p}`);
       } else {
         console.log(`[bbox] permission request kind=${req.kind}`);
       }
-      return { kind: "denied-by-rules" };
+      return { kind: "reject" as const };
     },
   });
 

@@ -14,7 +14,7 @@ export async function getCopilotClient(): Promise<CopilotClient> {
   if (!clientInstance) {
     const token = process.env.GITHUB_TOKEN;
     clientInstance = new CopilotClient(
-      token ? { githubToken: token } : undefined,
+      token ? { gitHubToken: token } : undefined,
     );
   }
   return clientInstance;

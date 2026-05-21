@@ -14,7 +14,7 @@
     "@azure/identity": "^4.13.0",
     "@fluentui/svg-icons": "^1.1.320",
     "@github/copilot": "^1.0.2",
-    "@github/copilot-sdk": "^0.1.30",
+    "@github/copilot-sdk": "1.0.0-beta.4",
     "cheerio": "^1.2.0",
     "lucide-react": "^0.576.0",
     "next": "16.1.6",

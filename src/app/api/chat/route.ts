@@ -20,7 +20,7 @@ import type {
   SessionConfig,
   PermissionHandler,
   MCPServerConfig,
-  MCPRemoteServerConfig,
+  MCPHTTPServerConfig,
 } from '@github/copilot-sdk';
 import type { DesignBrief, SlideItem } from '@/domain/entities/slide-work';
 
@@ -155,7 +155,7 @@ export async function POST(req: NextRequest) {
                 type: 'http',
                 url: 'https://learn.microsoft.com/api/mcp',
                 tools: ['*'],
-              } satisfies MCPRemoteServerConfig,
+              } satisfies MCPHTTPServerConfig,
             }
           : undefined;
 
@@ -211,24 +211,24 @@ export async function POST(req: NextRequest) {
               mode: 'append' as const,
               content: [...baseSystemLines, ...modeSystemLines].join(' '),
             },
-            onPermissionRequest: ((req) => {
-              if (req.kind === 'custom-tool') return { kind: 'approved' };
+            onPermissionRequest: ((req, _invocation) => {
+              if (req.kind === 'custom-tool') return { kind: 'approve-once' };
               // Allow reading SDK tool-output temp files and chat image attachments
               if (req.kind === 'read') {
-                const filePath = String((req as Record<string, unknown>).path ?? '');
-                if (filePath.includes('copilot-tool-output')) return { kind: 'approved' };
-                if (tmpImagePaths.includes(filePath)) return { kind: 'approved' };
+                const filePath = String((req as unknown as Record<string, unknown>).path ?? '');
+                if (filePath.includes('copilot-tool-output')) return { kind: 'approve-once' };
+                if (tmpImagePaths.includes(filePath)) return { kind: 'approve-once' };
               }
               // Allow built-in web_search (bundled MCP) and Microsoft Learn MCP (read-only docs lookup).
               if (req.kind === 'mcp') {
-                const serverName = String((req as Record<string, unknown>).serverName ?? '');
-                if (serverName === 'microsoft-learn') return { kind: 'approved' };
-                if (serverName === 'github-mcp-server-web_search') return { kind: 'approved' };
+                const serverName = String((req as unknown as Record<string, unknown>).serverName ?? '');
+                if (serverName === 'microsoft-learn') return { kind: 'approve-once' };
+                if (serverName === 'github-mcp-server-web_search') return { kind: 'approve-once' };
               }
               // Allow built-in fetch tool for reading the body of pages discovered via web_search.
-              if (req.kind === 'url') return { kind: 'approved' };
+              if (req.kind === 'url') return { kind: 'approve-once' };
               console.warn(`[permission] denied ${req.kind}`, req);
-              return { kind: 'denied-by-rules' };
+              return { kind: 'reject' };
             }) satisfies PermissionHandler,
           };
 
