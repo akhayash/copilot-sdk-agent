@@ -51,6 +51,11 @@ export interface ExtractLayoutOptions {
   slideNumber: number;
   signal?: AbortSignal;
   timeoutMs?: number;
+  /**
+   * Optional hint from a previous extraction round (e.g. "diff=32%, phash=18").
+   * Injected into the first-call prompt to guide the model toward more accurate extraction.
+   */
+  refinementHint?: string;
 }
 
 /** Concurrency hint for callers wiring up p-queue. */
@@ -143,10 +148,11 @@ async function runVisionOnce(args: {
   imagePath: string;
   slideNumber: number;
   retryHint?: string;
+  refinementHint?: string;
   timeoutMs: number;
   signal?: AbortSignal;
 }): Promise<string> {
-  const { imagePath, slideNumber, retryHint, timeoutMs, signal } = args;
+  const { imagePath, slideNumber, retryHint, refinementHint, timeoutMs, signal } = args;
 
   // Normalize imagePath once so the permission check is OS-agnostic.
   // On Windows, tmpdir() uses backslashes but the CLI may send forward slashes.
@@ -190,7 +196,9 @@ async function runVisionOnce(args: {
 
   const prompt = retryHint
     ? `Slide ${slideNumber}. Previous output failed schema validation: ${retryHint}. Return ONLY a valid JSON object per the schema, no commentary.`
-    : `Extract the layout JSON for slide ${slideNumber}.`;
+    : refinementHint
+      ? `Slide ${slideNumber}. REFINEMENT: A previous extraction of this slide had poor visual fidelity (${refinementHint}). Re-analyze the image carefully: ensure all text is captured verbatim, bbox coordinates precisely wrap visible elements, and no elements are missed. Return ONLY a valid JSON object.`
+      : `Extract the layout JSON for slide ${slideNumber}.`;
 
   // Combine caller signal with our own timeout
   const ac = new AbortController();
@@ -257,10 +265,11 @@ export async function extractLayout(
   await fs.writeFile(tmpFile, imageBuffer);
 
   try {
-    // First attempt
+    // First attempt (pass refinementHint if this is a re-extraction)
     const raw1 = await runVisionOnce({
       imagePath: tmpFile,
       slideNumber: opts.slideNumber,
+      refinementHint: opts.refinementHint,
       timeoutMs,
       signal: opts.signal,
     });
