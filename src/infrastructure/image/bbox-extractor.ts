@@ -108,8 +108,11 @@ const SYSTEM_PROMPT = [
   "",
   "=== PICTURE RULE ===",
   '- Only use type "picture" for photographic content, charts, icons, or illustrations embedded in the slide.',
-  '- For a "picture" element the sourceCrop field MUST be present. If the image occupies its full bbox, use [0, 0, 1, 1].',
-  "- If the entire slide IS an image (no overlaid text), represent the image as a full-bleed picture: bbox=[0,0,1,1], sourceCrop=[0,0,1,1].",
+  '- CRITICAL: sourceCrop is the region to cut from THIS SAME source image (the slide image you are analyzing).',
+  '  The source image is the entire slide. Therefore, for an icon or image at position [px,py,pw,ph] on the slide,',
+  '  set sourceCrop = [px, py, pw, ph] (identical to bbox). Do NOT use [0,0,1,1] unless the picture fills the entire slide.',
+  '  Example: icon visible at x=0.05..0.13, y=0.10..0.20 → bbox=[0.05,0.10,0.08,0.10], sourceCrop=[0.05,0.10,0.08,0.10].',
+  '- If the entire slide IS an image (no overlaid text), represent the image as a full-bleed picture: bbox=[0,0,1,1], sourceCrop=[0,0,1,1].',
   "",
   "=== STRICT FORMAT ===",
   "- Return ONLY the raw JSON object. No markdown fences, no explanation, no trailing text.",
@@ -366,8 +369,11 @@ function normalizeLayout(obj: unknown): unknown {
       e.line = line;
     }
     if (e.type === "picture") {
+      const bboxVal = Array.isArray(e.bbox) ? (e.bbox as number[]) : null;
       if (!Array.isArray(e.sourceCrop)) {
-        e.sourceCrop = [0, 0, 1, 1];
+        // Default sourceCrop to bbox: for icons/images placed on the slide,
+        // the region to cut from the source image equals the element's position.
+        e.sourceCrop = bboxVal ? [...bboxVal] : [0, 0, 1, 1];
       } else {
         e.sourceCrop = clampBbox(e.sourceCrop);
       }

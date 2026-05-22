@@ -152,7 +152,8 @@ async function renderElement(
   switch (el.type) {
     case "picture": {
       const data = await cropToDataUri(sourceImage, el.sourceCrop);
-      slide.addImage({ data, ...rect });
+      // sizing:'contain' preserves the cropped image's aspect ratio within the bbox.
+      slide.addImage({ data, ...rect, sizing: { type: 'contain', w: rect.w, h: rect.h } });
       return;
     }
     case "auto_shape": {
