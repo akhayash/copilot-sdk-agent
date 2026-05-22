@@ -385,6 +385,19 @@ function normalizeLayout(obj: unknown): unknown {
     return e;
   });
 
+  // Deduplicate element IDs: if LLM returns duplicate IDs, append suffix to keep schema valid.
+  const seenIds = new Set<string>();
+  layout.elements = (layout.elements as Array<Record<string, unknown>>).map((e) => {
+    const id = typeof e.id === "string" ? e.id : "";
+    if (seenIds.has(id)) {
+      let suffix = 2;
+      while (seenIds.has(`${id}_${suffix}`)) suffix++;
+      e.id = `${id}_${suffix}`;
+    }
+    seenIds.add(e.id as string);
+    return e;
+  });
+
   return layout;
 }
 
