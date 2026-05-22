@@ -44,8 +44,9 @@ function timed<T>(label: string, fn: () => Promise<T>): Promise<{ result: T; ms:
 }
 
 export async function POST(req: NextRequest) {
-  if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'not available in production' }, { status: 403 });
+  const enabled = process.env.PIPELINE_TEST_ENABLED === 'true';
+  if (process.env.NODE_ENV === 'production' && !enabled) {
+    return NextResponse.json({ error: 'not available in production (set PIPELINE_TEST_ENABLED=true to enable)' }, { status: 403 });
   }
 
   const body = (await req.json()) as { imageId?: string; slideNumber?: number };

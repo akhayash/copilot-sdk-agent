@@ -26,6 +26,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 # LibreOffice writes to $HOME/.config; point it at a writable tmpfs location.
 ENV HOME=/tmp
 

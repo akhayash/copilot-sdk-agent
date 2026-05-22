@@ -13,9 +13,9 @@ import { promisify } from 'node:util';
 
 const execAsync = promisify(exec);
 
-async function probeCommand(cmd: string): Promise<{ available: boolean; version?: string; error?: string }> {
+async function probeCommand(cmd: string, versionArg = '--version'): Promise<{ available: boolean; version?: string; error?: string }> {
   try {
-    const { stdout, stderr } = await execAsync(`${cmd} --version`, { timeout: 5000 });
+    const { stdout, stderr } = await execAsync(`${cmd} ${versionArg}`, { timeout: 5000 });
     const raw = (stdout || stderr).split('\n')[0].trim();
     return { available: true, version: raw.slice(0, 80) };
   } catch (e) {
@@ -26,7 +26,7 @@ async function probeCommand(cmd: string): Promise<{ available: boolean; version?
 export async function GET() {
   const [soffice, pdftoppm] = await Promise.all([
     probeCommand('soffice'),
-    probeCommand('pdftoppm'),
+    probeCommand('pdftoppm', '-v'),
   ]);
 
   const refinementLoopReady = soffice.available && pdftoppm.available;

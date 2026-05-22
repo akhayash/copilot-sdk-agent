@@ -23,12 +23,14 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - PIPELINE_TEST_ENABLED=true
     # LibreOffice writes runtime profiles to /tmp per-PID; give it enough room.
     tmpfs:
       - /tmp:size=512m
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 15s
       timeout: 10s
       retries: 5

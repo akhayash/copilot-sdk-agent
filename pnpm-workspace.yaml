@@ -1,6 +1,9 @@
-ignoredBuiltDependencies:
-  - unrs-resolver
+minimumReleaseAge: 0
 
-onlyBuiltDependencies:
-  - sharp
-  - skia-canvas
+overrides:
+  postcss@<8.5.10: '>=8.5.10'
+
+allowBuilds:
+  sharp: true
+  skia-canvas: true
+  unrs-resolver: false
