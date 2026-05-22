@@ -40,3 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 *.log
+
+# test artifacts (local only — not committed)
+/test-fixtures/
+/test-screenshots/

@@ -5,15 +5,17 @@
 
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Star, PanelRightOpen, PanelRightClose } from 'lucide-react';
 import { MessageList } from './message-list';
 import { MessageInput } from './message-input';
 import { ModelSelector, type ModelOption, type ReasoningEffortOption } from './model-selector';
 import { ReasoningEffortSelector } from './reasoning-effort-selector';
 import { SlidePanel } from '@/app/components/slides/slide-panel';
+import type { GenerationMode } from '@/app/components/slides/mode-toggle';
 import type { Message, Attachment } from '@/domain/entities/message';
 import type { DesignBrief, SlideWork, SlideItem, SlideLayout } from '@/domain/entities/slide-work';
+import { buildImagePrompt, getEffectivePrompt } from '@/application/image-prompt-builder';
 
 const ACCENT_CYCLE: SlideItem['accent'][] = ['blue', 'green', 'purple', 'teal', 'orange'];
 const VALID_LAYOUTS: SlideLayout[] = ['title', 'agenda', 'section', 'bullets', 'cards', 'stats', 'comparison', 'timeline', 'diagram', 'summary'];
@@ -31,16 +33,62 @@ function detectPptxCode(content: string) {
   return null;
 }
 
+interface ScenarioSlidePayload {
+  number: number;
+  title: string;
+  keyMessage?: string;
+  layout?: string;
+  bullets: string[];
+  notes?: string;
+  icon?: string;
+  bodyMarkdown?: string;
+}
+
+function toSlideItem(s: ScenarioSlidePayload, previous?: SlideItem): SlideItem {
+  return {
+    id: `slide-${s.number}`,
+    number: s.number,
+    title: s.title,
+    keyMessage: s.keyMessage || '',
+    layout: (VALID_LAYOUTS.includes(s.layout as SlideLayout) ? s.layout : 'bullets') as SlideLayout,
+    bullets: s.bullets,
+    notes: s.notes || '',
+    icon: s.icon || null,
+    code: previous?.code ?? null,
+    accent: ACCENT_CYCLE[(s.number - 1) % ACCENT_CYCLE.length],
+    bodyMarkdown: s.bodyMarkdown ?? previous?.bodyMarkdown ?? null,
+    imageUrl: previous?.imageUrl ?? null,
+    imagePrompt: previous?.imagePrompt ?? null,
+    imageStatus: previous?.imageStatus ?? 'idle',
+    layoutStatus: previous?.layoutStatus ?? 'idle',
+  };
+}
+
 export function ChatContainer() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(process.env.NEXT_PUBLIC_DEFAULT_MODEL || 'claude-opus-4.6');
+  const [selectedModel, setSelectedModel] = useState(process.env.NEXT_PUBLIC_DEFAULT_MODEL || 'claude-opus-4.7');
   const [selectedModelInfo, setSelectedModelInfo] = useState<ModelOption | null>(null);
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState<ReasoningEffortOption>('medium');
-  const [slideWork, setSlideWork] = useState<SlideWork>({ phase: 'empty', story: null, designBrief: null, slides: [], pptx: null, thinking: null, isStreaming: false });
+  const [slideWork, setSlideWork] = useState<SlideWork>({
+    phase: 'empty',
+    story: null,
+    designBrief: null,
+    slides: [],
+    pptx: null,
+    thinking: null,
+    isStreaming: false,
+    generationMode: 'code',
+  });
   const [panelOpen, setPanelOpen] = useState(true);
   const [mobileView, setMobileView] = useState<'chat' | 'scenario'>('chat');
   const [scenarioTitle, setScenarioTitle] = useState<string>('Presentation');
+  const [imageModeDisabled, setImageModeDisabled] = useState(false);
+  const [imageModeDisabledHint, setImageModeDisabledHint] = useState<string | undefined>(undefined);
+
+  // Keep a ref to latest slideWork so async image handlers see fresh state.
+  const slideWorkRef = useRef(slideWork);
+  useEffect(() => { slideWorkRef.current = slideWork; }, [slideWork]);
 
   const selectedModelMetadata = selectedModelInfo?.id === selectedModel ? selectedModelInfo : null;
   const supportsReasoningEffort = selectedModelMetadata?.supportsReasoningEffort ?? false;
@@ -66,6 +114,85 @@ export function ChatContainer() {
     }
   }, [selectedModelMetadata, selectedReasoningEffort, supportedReasoningEfforts, supportsReasoningEffort]);
 
+  // ── Slide-image helpers ──────────────────────────────────────────────
+
+  const setSlideImageStatus = useCallback((slideNumber: number, patch: Partial<SlideItem>) => {
+    setSlideWork((prev) => ({
+      ...prev,
+      slides: prev.slides.map((s) => (s.number === slideNumber ? { ...s, ...patch } : s)),
+    }));
+  }, []);
+
+  const generateOneImage = useCallback(async (slideNumber: number) => {
+    const current = slideWorkRef.current.slides.find((s) => s.number === slideNumber);
+    if (!current) return;
+    const brief = slideWorkRef.current.designBrief;
+    const prompt = getEffectivePrompt(current, brief);
+
+    setSlideImageStatus(slideNumber, { imageStatus: 'generating', imagePrompt: prompt });
+    try {
+      const response = await fetch('/api/skills/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slideNumber, prompt }),
+      });
+      if (!response.ok) {
+        if (response.status === 503) {
+          setImageModeDisabled(true);
+          setImageModeDisabledHint('AZURE_IMAGE_ENDPOINT 未設定または利用不可');
+        }
+        const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(err.error || `Failed to generate image: ${response.status}`);
+      }
+      const data = await response.json() as { imageId: string; slideNumber: number; imageUrl: string; prompt: string };
+      setSlideImageStatus(slideNumber, {
+        imageStatus: 'ready',
+        imageUrl: data.imageUrl,
+        imagePrompt: data.prompt,
+      });
+    } catch {
+      setSlideImageStatus(slideNumber, { imageStatus: 'error' });
+    }
+  }, [setSlideImageStatus]);
+
+  const handleRegenerateImage = useCallback(async (slideNumber: number) => {
+    const current = slideWorkRef.current.slides.find((s) => s.number === slideNumber);
+    if (!current) return;
+    // For regeneration, drop any cached prompt so buildImagePrompt picks up the latest bodyMarkdown.
+    const fresh = buildImagePrompt(current, slideWorkRef.current.designBrief);
+    setSlideImageStatus(slideNumber, { imagePrompt: fresh });
+    await generateOneImage(slideNumber);
+  }, [generateOneImage, setSlideImageStatus]);
+
+  const handleGenerateAllImages = useCallback(async () => {
+    const targets = slideWorkRef.current.slides.filter(
+      (s) => !s.imageStatus || s.imageStatus === 'idle' || s.imageStatus === 'error',
+    );
+    for (const slide of targets) {
+      await generateOneImage(slide.number);
+    }
+  }, [generateOneImage]);
+
+  const handleClearAllImages = useCallback(() => {
+    setSlideWork((prev) => ({
+      ...prev,
+      slides: prev.slides.map((s) => ({ ...s, imageStatus: 'idle' as const, imageUrl: undefined })),
+    }));
+  }, []);
+
+  const handleUpdateSlideBody = useCallback((slideNumber: number, bodyMarkdown: string) => {
+    setSlideWork((prev) => ({
+      ...prev,
+      slides: prev.slides.map((s) => (s.number === slideNumber ? { ...s, bodyMarkdown } : s)),
+    }));
+  }, []);
+
+  const handleModeChange = useCallback((next: GenerationMode) => {
+    setSlideWork((prev) => ({ ...prev, generationMode: next }));
+  }, []);
+
+  // ── Chat send ────────────────────────────────────────────────────────
+
   const handleSendMessage = async (text: string, attachments?: Attachment[]) => {
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -84,6 +211,11 @@ export function ChatContainer() {
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
+      // Extract image attachments (DataURL) to send to AI vision
+      const imageAttachments = attachments
+        ?.filter((a) => a.mimeType.startsWith('image/') && a.content.startsWith('data:'))
+        .map((a) => ({ dataUrl: a.content, mimeType: a.mimeType, filename: a.filename }));
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -96,7 +228,9 @@ export function ChatContainer() {
             slides: slideWork.slides,
             designBrief: slideWork.designBrief,
           },
+          generationMode: slideWork.generationMode ?? 'code',
           ...(supportsReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {}),
+          ...(imageAttachments && imageAttachments.length > 0 ? { imageAttachments } : {}),
         }),
       });
 
@@ -136,57 +270,64 @@ export function ChatContainer() {
                 if (parsed.content) { assistantContent += parsed.content; updated = true; }
                 if (parsed.scenario) {
                   // Scenario tool called — populate right panel directly
-                  const { title, slides, designBrief } = parsed.scenario;
+                  const { title, slides, designBrief } = parsed.scenario as {
+                    title: string;
+                    slides: ScenarioSlidePayload[];
+                    designBrief?: unknown;
+                  };
                   setScenarioTitle(title);
-                  const slideItems: SlideItem[] = slides.map((s: { number: number; title: string; keyMessage?: string; layout?: string; bullets: string[]; notes?: string; icon?: string }) => ({
-                    id: `slide-${s.number}`,
-                    number: s.number,
-                    title: s.title,
-                    keyMessage: s.keyMessage || '',
-                    layout: (VALID_LAYOUTS.includes(s.layout as SlideLayout) ? s.layout : 'bullets') as SlideLayout,
-                    bullets: s.bullets,
-                    notes: s.notes || '',
-                    icon: s.icon || null,
-                    code: null,
-                    accent: ACCENT_CYCLE[(s.number - 1) % ACCENT_CYCLE.length],
-                  }));
-                  setSlideWork((prev) => ({
-                    ...prev,
-                    phase: 'story',
-                    designBrief: normalizeDesignBrief(designBrief),
-                    story: { intro: '', storyContent: '' },
-                    slides: slideItems,
-                    pptx: null,
-                  }));
+                  setSlideWork((prev) => {
+                    const previousByNumber = new Map(prev.slides.map((s) => [s.number, s]));
+                    const slideItems = slides.map((s) => toSlideItem(s, previousByNumber.get(s.number)));
+                    return {
+                      ...prev,
+                      phase: 'story',
+                      designBrief: normalizeDesignBrief(designBrief),
+                      story: { intro: '', storyContent: '' },
+                      slides: slideItems,
+                      pptx: null,
+                    };
+                  });
                   setMobileView('scenario');
                   if (!panelOpen) setPanelOpen(true);
                   updated = true;
                 }
                 if (parsed.slide_update) {
-                  // Single slide update — merge into existing slides
-                  const s = parsed.slide_update;
-                  const updatedSlide: SlideItem = {
-                    id: `slide-${s.number}`,
-                    number: s.number,
-                    title: s.title,
-                    keyMessage: s.keyMessage || '',
-                    layout: (VALID_LAYOUTS.includes(s.layout as SlideLayout) ? s.layout : 'bullets') as SlideLayout,
-                    bullets: s.bullets,
-                    notes: s.notes || '',
-                    icon: s.icon || null,
-                    code: null,
-                    accent: ACCENT_CYCLE[(s.number - 1) % ACCENT_CYCLE.length],
-                  };
+                  // Single slide update — merge into existing slides, preserving image state
+                  const s = parsed.slide_update as ScenarioSlidePayload;
                   setSlideWork((prev) => {
-                    const exists = prev.slides.some((e) => e.number === updatedSlide.number);
+                    const existing = prev.slides.find((e) => e.number === s.number);
+                    const updatedSlide = toSlideItem(s, existing);
                     return {
                       ...prev,
-                      slides: exists
+                      slides: existing
                         ? prev.slides.map((e) => e.number === updatedSlide.number ? updatedSlide : e)
                         : [...prev.slides, updatedSlide].sort((a, b) => a.number - b.number),
                     };
                   });
                   setMobileView('scenario');
+                  updated = true;
+                }
+                if (parsed.image_generated) {
+                  const { slideNumber, imageId, url, prompt } = parsed.image_generated as {
+                    slideNumber: number;
+                    imageId: string;
+                    url: string;
+                    prompt: string;
+                  };
+                  setSlideWork((prev) => ({
+                    ...prev,
+                    slides: prev.slides.map((sl) =>
+                      sl.number === slideNumber
+                        ? {
+                            ...sl,
+                            imageUrl: url ?? (imageId ? `/api/skills/image/${imageId}` : sl.imageUrl ?? null),
+                            imagePrompt: prompt ?? sl.imagePrompt ?? null,
+                            imageStatus: 'ready',
+                          }
+                        : sl,
+                    ),
+                  }));
                   updated = true;
                 }
               } catch (e) {
@@ -201,14 +342,15 @@ export function ChatContainer() {
               setSlideWork((prev) => ({ ...prev, thinking: thinkingContent }));
             }
 
-            // Detect PPTX code in chat stream
-            const pptx = detectPptxCode(assistantContent);
-            if (pptx) {
-              // Use scenario title instead of unreliable code extraction
-              pptx.title = scenarioTitle;
-              setSlideWork((prev) => ({ ...prev, phase: 'ready', pptx }));
-              setMobileView('scenario');
-              if (!panelOpen) setPanelOpen(true);
+            // Detect PPTX code in chat stream (code mode only)
+            if ((slideWorkRef.current.generationMode ?? 'code') === 'code') {
+              const pptx = detectPptxCode(assistantContent);
+              if (pptx) {
+                pptx.title = scenarioTitle;
+                setSlideWork((prev) => ({ ...prev, phase: 'ready', pptx }));
+                setMobileView('scenario');
+                if (!panelOpen) setPanelOpen(true);
+              }
             }
 
             setMessages([...newMessages, {
@@ -233,12 +375,14 @@ export function ChatContainer() {
       }]);
       setSlideWork((prev) => ({ ...prev, isStreaming: false }));
 
-      // Final PPTX code detection
-      const pptx = detectPptxCode(finalContent);
-      if (pptx) {
-        pptx.title = scenarioTitle;
-        setSlideWork((prev) => ({ ...prev, phase: 'ready', pptx }));
-        setMobileView('scenario');
+      // Final PPTX code detection (code mode only)
+      if ((slideWorkRef.current.generationMode ?? 'code') === 'code') {
+        const pptx = detectPptxCode(finalContent);
+        if (pptx) {
+          pptx.title = scenarioTitle;
+          setSlideWork((prev) => ({ ...prev, phase: 'ready', pptx }));
+          setMobileView('scenario');
+        }
       }
     } catch (error) {
       setMessages([...newMessages, {
@@ -347,6 +491,14 @@ export function ChatContainer() {
                 handleSendMessage('このシナリオの内容でPPTXを生成してください。');
               }
             }}
+            onModeChange={handleModeChange}
+            onGenerateImage={generateOneImage}
+            onRegenerateImage={handleRegenerateImage}
+            onGenerateAllImages={handleGenerateAllImages}
+            onUpdateSlideBody={handleUpdateSlideBody}
+            onClearAllImages={handleClearAllImages}
+            imageModeDisabled={imageModeDisabled}
+            imageModeDisabledHint={imageModeDisabledHint}
           />
         </div>
       </div>

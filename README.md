@@ -9,7 +9,7 @@
 - 🎯 **McKinsey式** — 結論先行タイトル、keyMessage（So What?）、レイアウト指定
 - 📝 **PPTX生成** — pptxgenjs コード実行方式で自由なレイアウト・カード・統計表示
 - 🎨 **Fluent UIカラーアイコン** — 24種のカラーアイコンをスライドに配置
-- 🔍 **Web検索** — Tavily APIでリアルタイム情報を収集
+- 🔍 **Web検索 + fetch** — Copilot SDK 標準の `web_search` / `fetch` でリアルタイム情報を収集・本文取得
 - 📎 **ファイル添付** — ドラッグ&ドロップでファイルをAIに読み込ませる
 - ✏️ **個別スライド更新** — 「P.5を変更して」で該当スライドのみ更新
 
@@ -24,7 +24,6 @@ node scripts/setup-icons.mjs
 
 # 環境変数設定
 export GITHUB_TOKEN=your_token
-export TAVILY_API_KEY=your_key  # 任意
 
 # 開発サーバー起動
 pnpm dev
@@ -57,10 +56,41 @@ http://localhost:3000 を開いてプレゼン作成を依頼してください�
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `GITHUB_TOKEN` | ✅ | Copilot SDK 認証 |
-| `TAVILY_API_KEY` | - | Web検索ツール有効化 |
 | `MODEL_NAME` | - | モデル指定（e.g., `claude-opus-4.6`） |
 | `MODEL_PROVIDER` | - | `azure` で Azure OpenAI 使用 |
 | `AZURE_OPENAI_ENDPOINT` | - | Azure BYOM エンドポイント |
+| `AZURE_IMAGE_ENDPOINT` | - | image-then-pptx モード有効化。Azure Foundry の gpt-image-2 エンドポイント（未設定でモード自動 disable） |
+| `AZURE_IMAGE_DEPLOYMENT` | - | gpt-image-2 のデプロイ名（既定: `gpt-image-2`） |
+| `AZURE_IMAGE_API_VERSION` | - | 画像 API バージョン（既定: `2025-04-01-preview`） |
+| `IMAGE_AUTH_MODE` | - | `entra` (managed identity / 既定) または `key`（`AZURE_IMAGE_API_KEY` 必須） |
+| `AZURE_IMAGE_API_KEY` | - | `IMAGE_AUTH_MODE=key` のときの API キー |
+| `BBOX_VISION_MODEL` | - | bbox 抽出に使う Vision モデル（既定: `gpt-4o`、Copilot SDK 経由） |
+| `BBOX_VISION_CONCURRENCY` | - | bbox 抽出の並列度（既定: `3`） |
+| `LIBREOFFICE_CONCURRENCY` | - | 品質ゲートの soffice 並列度（既定: `1`、2 GiB メモリの安全側） |
+
+## Image-then-PPTX Mode
+
+PPTX 生成には 2 つのモードがある：
+
+| モード | 概要 | 必要環境 |
+|--------|------|----------|
+| `code`（既定） | AI が pptxgenjs コードを直接生成 → PPTX 化 | `GITHUB_TOKEN` のみ |
+| `image-then-pptx` | gpt-image-2 で各スライド画像を生成 → Vision モデルで bbox 抽出 → pptxgenjs で再構築 | `AZURE_IMAGE_ENDPOINT` + 画像 deploy + Vision モデル |
+
+**ワークフロー（image-then-pptx）**:
+
+1. ユーザーが依頼 → AI が `set_scenario` でシナリオを右パネルに送信
+2. UI トグルで `image-then-pptx` に切替 → 「全画像生成」ボタンで各スライドの画像を Azure Foundry に生成依頼
+3. ユーザーが画像をレビュー（個別再生成・bodyMarkdown 編集による再生成も可）
+4. 「PPTX を生成」→ bbox 抽出 → レイアウト再構築 → PPTX ダウンロード
+5. ダウンロード完了後、非同期で品質バッジ（pass/warn/fail）が表示される（LibreOffice + pixelmatch + pHash 比較）
+
+**ランタイム依存**:
+
+- Docker イメージに `libreoffice-impress` + `poppler-utils` + `fonts-noto-cjk` が同梱されている必要がある（Phase 7.1 で対応済み）。`pnpm dev` でローカル動作させる場合はホストに `soffice` と `pdftoppm` がインストールされていること。
+- Container Apps のメモリは **最低 2 GiB** が必要（LibreOffice ピーク 200–400 MB × 並行 + Node + sharp で 1.2–1.6 GiB）。
+- `minReplicas: 1` で cold start（soffice 初回起動 5–10 秒）を回避する。
+- フォールバック: bbox 抽出失敗時は Hybrid C（背景画像 + タイトル帯 + 半透明本文パネル）に降格して必ず PPTX を返す。レスポンスヘッダ `x-pptx-fallback: hybrid-c` または `hybrid-c-partial; slides=2,5` で通知される。
 
 ## Commands
 
@@ -141,7 +171,6 @@ Stage 3 (runner):  node:22-slim → standalone output + npm node_modules
 | `AZURE_TENANT_ID` | Microsoft テナント ID |
 | `AZURE_SUBSCRIPTION_ID` | Azure サブスクリプション ID |
 | `APP_GITHUB_TOKEN` | Copilot SDK 認証用 GitHub トークン |
-| `TAVILY_API_KEY` | Web 検索ツール API キー |
 
 ### Container App 環境変数
 
@@ -151,7 +180,6 @@ Stage 3 (runner):  node:22-slim → standalone output + npm node_modules
 | `PORT` | `3000` | |
 | `HOSTNAME` | `0.0.0.0` | EasyAuth ミドルウェアが 127.0.0.1 経由でアクセスするため必須 |
 | `GITHUB_TOKEN` | (secret ref) | Copilot SDK 認証 |
-| `TAVILY_API_KEY` | (secret ref) | Web 検索 |
 | `MODEL_NAME` | `claude-opus-4.6` | AI モデル指定 |
 
 ### 認証 (GitHub OAuth / EasyAuth)

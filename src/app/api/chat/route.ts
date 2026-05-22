@@ -5,19 +5,47 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
+import { tmpdir } from 'os';
+import { writeFileSync, unlinkSync } from 'fs';
+import crypto from 'crypto';
 import { getCopilotClient, getSessionOptions } from '@/infrastructure/copilot/client';
 import { ChatUseCase } from '@/application/chat-use-case';
-import { webSearchTool } from '@/infrastructure/tools/web-search-tool';
 import { createScenarioTool, createUpdateSlideTool } from '@/infrastructure/tools/scenario-tool';
-import type { SessionConfig, PermissionHandler } from '@github/copilot-sdk';
+import {
+  createGenerateSlideImageTool,
+  createGenerateAllImagesTool,
+} from '@/infrastructure/tools/image-tool';
+import { getImageClient } from '@/infrastructure/image/azure-image-client';
+import type {
+  SessionConfig,
+  PermissionHandler,
+  MCPServerConfig,
+  MCPHTTPServerConfig,
+} from '@github/copilot-sdk';
 import type { DesignBrief, SlideItem } from '@/domain/entities/slide-work';
 
 type ReasoningEffort = NonNullable<SessionConfig['reasoningEffort']>;
+type GenerationMode = 'code' | 'image-then-pptx' | 'image-bleed' | 'image-editable';
 
 const VALID_REASONING_EFFORTS: readonly ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh'];
+const VALID_GENERATION_MODES: readonly GenerationMode[] = ['code', 'image-then-pptx', 'image-bleed', 'image-editable'];
 
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
   return typeof value === 'string' && VALID_REASONING_EFFORTS.includes(value as ReasoningEffort);
+}
+
+function isGenerationMode(value: unknown): value is GenerationMode {
+  return typeof value === 'string' && VALID_GENERATION_MODES.includes(value as GenerationMode);
+}
+
+function isImageMode(mode: GenerationMode): boolean {
+  return mode === 'image-then-pptx' || mode === 'image-bleed' || mode === 'image-editable';
+}
+
+interface ImageAttachment {
+  dataUrl: string;
+  mimeType: string;
+  filename: string;
 }
 
 interface ChatRequest {
@@ -25,6 +53,8 @@ interface ChatRequest {
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   model?: string;
   reasoningEffort?: ReasoningEffort;
+  generationMode?: GenerationMode;
+  imageAttachments?: ImageAttachment[];
   workspace?: {
     title: string;
     slides: SlideItem[];
@@ -35,18 +65,39 @@ interface ChatRequest {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as ChatRequest;
-    const { message, history, model, reasoningEffort, workspace } = body;
+    const { message, history, model, reasoningEffort, workspace, imageAttachments } = body;
+    const generationMode: GenerationMode = isGenerationMode(body.generationMode)
+      ? body.generationMode
+      : 'code';
 
-    // Validate input
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+    // Validate input — allow empty message when images are attached
+    const hasImageAttachments = imageAttachments && imageAttachments.length > 0;
+    if (!hasImageAttachments && (!message || typeof message !== 'string' || message.trim().length === 0)) {
       return NextResponse.json({ error: 'Message is required and must be non-empty' }, { status: 400 });
     }
     if (reasoningEffort && !isReasoningEffort(reasoningEffort)) {
       return NextResponse.json({ error: 'Invalid reasoning effort' }, { status: 400 });
     }
+    if (body.generationMode !== undefined && !isGenerationMode(body.generationMode)) {
+      return NextResponse.json({ error: 'Invalid generationMode' }, { status: 400 });
+    }
 
     // Build prompt
-    const prompt = ChatUseCase.buildPrompt(message, history, workspace);
+    const prompt = ChatUseCase.buildPrompt(message ?? '', history, workspace);
+
+    // Write image attachments to temp files for SDK consumption
+    const tmpImagePaths: string[] = [];
+    if (hasImageAttachments) {
+      for (const img of imageAttachments!) {
+        const base64 = img.dataUrl.split(',')[1];
+        if (!base64) continue;
+        const buf = Buffer.from(base64, 'base64');
+        const ext = img.mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
+        const tmpPath = path.join(tmpdir(), `chat-img-${crypto.randomUUID()}.${ext}`);
+        writeFileSync(tmpPath, buf);
+        tmpImagePaths.push(tmpPath);
+      }
+    }
 
     // Initialize copilot client
     const copilot = await getCopilotClient();
@@ -70,40 +121,114 @@ export async function POST(req: NextRequest) {
           const data = JSON.stringify({ slide_update: slide });
           controller.enqueue(encoder.encode(`data: ${data}\n\n`));
         });
-        const tools = [scenarioTool, updateSlideTool, ...(process.env.TAVILY_API_KEY ? [webSearchTool] : [])];
+
+        const imageEnabled = isImageMode(generationMode) && getImageClient() !== null;
+        const emitImageGenerated = (event: {
+          slideNumber: number;
+          imageId: string;
+          imageUrl: string;
+          prompt: string;
+        }) => {
+          const data = JSON.stringify({ image_generated: event });
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        };
+        const imageTools = imageEnabled
+          ? [
+              createGenerateSlideImageTool(emitImageGenerated),
+              createGenerateAllImagesTool(emitImageGenerated),
+            ]
+          : [];
+
+        const tools = [
+          scenarioTool,
+          updateSlideTool,
+          ...imageTools,
+        ];
+
+        // Microsoft Learn MCP server — enables grounding on official Microsoft / Azure docs.
+        // Disable by setting MICROSOFT_LEARN_MCP=off.
+        const microsoftLearnEnabled =
+          (process.env.MICROSOFT_LEARN_MCP ?? 'on').toLowerCase() !== 'off';
+        const mcpServers: Record<string, MCPServerConfig> | undefined = microsoftLearnEnabled
+          ? {
+              'microsoft-learn': {
+                type: 'http',
+                url: 'https://learn.microsoft.com/api/mcp',
+                tools: ['*'],
+              } satisfies MCPHTTPServerConfig,
+            }
+          : undefined;
 
         try {
-          // Skill directories (SKILL.md based)
-          const skillDirs = [
-            path.resolve(process.cwd(), 'skills', 'create-slide-story'),
-            path.resolve(process.cwd(), 'skills', 'generate-pptx'),
-          ];
+          // Skill directories (SKILL.md based) — switch by generation mode
+          const skillDirs =
+            isImageMode(generationMode)
+              ? [
+                  path.resolve(process.cwd(), 'skills', 'create-slide-story'),
+                  path.resolve(process.cwd(), 'skills', 'pptx-from-image'),
+                ]
+              : [
+                  path.resolve(process.cwd(), 'skills', 'create-slide-story'),
+                  path.resolve(process.cwd(), 'skills', 'generate-pptx'),
+                ];
+
+          const baseSystemLines = [
+            'You are a helpful AI assistant specialized in creating presentations. Always respond in the same language as the user.',
+            'SCOPE: You help with presentation/slide creation tasks. Research, data gathering, web search, and information analysis are fully within scope when they support building a presentation — treat them as the first step of slide creation. Decline only tasks clearly unrelated to presentations (e.g., writing code unrelated to slides, system administration, file/filesystem operations, or running shell commands).',
+            'When creating a slide outline, ALWAYS use the set_scenario tool to send the scenario to the workspace panel. Use the optional designBrief to capture the intended tone, density, and visual direction for the later PPTX step.',
+            'When generating PPTX, treat slide layout and icon values as hints rather than rigid instructions, and feel free to design a stronger visual composition if it better communicates the approved story.',
+            'When the user asks to change a specific slide, use the update_slide tool to update only that slide.',
+            'Do NOT output slide listings in the chat message.',
+            'NEVER suggest shell commands, file operations, or workarounds to the user.',
+            microsoftLearnEnabled
+              ? 'KNOWLEDGE GROUNDING: When the user asks about Microsoft / Azure topics (e.g., Azure services, .NET, M365, Power Platform, Microsoft Graph), use the Microsoft Learn MCP tools (`microsoft_docs_search`, `microsoft_code_sample_search`, `microsoft_docs_fetch`) to ground slide content in official Microsoft documentation BEFORE calling set_scenario. Prefer search first, then fetch for depth when needed.'
+              : '',
+            tmpImagePaths.length > 0
+              ? `IMAGE INPUT: The user has attached ${tmpImagePaths.length} image(s) to their message. Analyze the image(s) thoroughly — extract themes, data visualizations, diagrams, text, branding, and visual style — and use them as the primary reference for creating or updating slides. If the user provides no text instruction, infer their intent from the image content and create an appropriate presentation.`
+              : '',
+          ].filter((s) => s.length > 0);
+          const modeSystemLines =
+            isImageMode(generationMode)
+              ? [
+                  imageEnabled
+                    ? 'MODE: image-then-pptx. After set_scenario, call generate_all_images to produce illustrations for every slide, then wait for the user to approve before emitting pptxgenjs code.'
+                    : 'MODE: image-then-pptx, but image generation is NOT configured on this deployment (AZURE_IMAGE_ENDPOINT is unset). Tell the user image generation is disabled and fall back to the standard code-only flow.',
+                  imageEnabled
+                    ? 'CRITICAL for image-then-pptx mode: every content slide in set_scenario MUST include a SUBSTANTIAL `bodyMarkdown` of 600-1200 Japanese characters (350-700 English words) per slide, organized into 3-5 paragraphs with concrete numbers, proper nouns, years, sources, and before/after contrasts. Bullets alone — or short 200-300 char bodies — produce generic stock-image results because gpt-image-2 has nothing concrete to compose. Treat bodyMarkdown as a research briefing that gpt-image-2 will read to design the slide. Only title/section divider slides may omit bodyMarkdown.'
+                    : '',
+                  imageEnabled
+                    ? 'When you call update_slide in image-then-pptx mode, ALSO call generate_slide_image for that same slideNumber in the same turn so the illustration stays in sync with the updated content. Always include bodyMarkdown on update_slide as well.'
+                    : '',
+                ].filter((s) => s.length > 0)
+              : [];
 
           const sessionConfig: SessionConfig = {
             ...sessionOpts,
             tools,
             skillDirectories: skillDirs,
+            ...(mcpServers ? { mcpServers } : {}),
             systemMessage: {
               mode: 'append' as const,
-              content: [
-                'You are a helpful AI assistant specialized in creating presentations. Always respond in the same language as the user.',
-                'SCOPE: You ONLY help with presentation/slide creation tasks. If a user asks you to do anything unrelated to presentations (e.g., create files, run commands, read source code, modify code, access the filesystem, or any general-purpose task), politely decline and redirect them to presentation-related work.',
-                'When creating a slide outline, ALWAYS use the set_scenario tool to send the scenario to the workspace panel. Use the optional designBrief to capture the intended tone, density, and visual direction for the later PPTX step.',
-                'When generating PPTX, treat slide layout and icon values as hints rather than rigid instructions, and feel free to design a stronger visual composition if it better communicates the approved story.',
-                'When the user asks to change a specific slide, use the update_slide tool to update only that slide.',
-                'Do NOT output slide listings in the chat message.',
-                'NEVER suggest shell commands, file operations, or workarounds to the user. You are a presentation assistant only.',
-              ].join(' '),
+              content: [...baseSystemLines, ...modeSystemLines].join(' '),
             },
-            onPermissionRequest: ((req) => {
-              if (req.kind === 'custom-tool') return { kind: 'approved' };
-              // Allow reading SDK tool-output temp files (e.g. web search results)
+            onPermissionRequest: ((req, _invocation) => {
+              if (req.kind === 'custom-tool') return { kind: 'approve-once' };
+              // Allow reading SDK tool-output temp files and chat image attachments
               if (req.kind === 'read') {
-                const filePath = String((req as Record<string, unknown>).path ?? '');
-                if (filePath.includes('copilot-tool-output')) return { kind: 'approved' };
+                const filePath = String((req as unknown as Record<string, unknown>).path ?? '');
+                if (filePath.includes('copilot-tool-output')) return { kind: 'approve-once' };
+                if (tmpImagePaths.includes(filePath)) return { kind: 'approve-once' };
               }
+              // Allow built-in web_search (bundled MCP) and Microsoft Learn MCP (read-only docs lookup).
+              if (req.kind === 'mcp') {
+                const serverName = String((req as unknown as Record<string, unknown>).serverName ?? '');
+                if (serverName === 'microsoft-learn') return { kind: 'approve-once' };
+                if (serverName === 'github-mcp-server-web_search') return { kind: 'approve-once' };
+              }
+              // Allow built-in fetch tool for reading the body of pages discovered via web_search.
+              if (req.kind === 'url') return { kind: 'approve-once' };
               console.warn(`[permission] denied ${req.kind}`, req);
-              return { kind: 'denied-by-rules' };
+              return { kind: 'reject' };
             }) satisfies PermissionHandler,
           };
 
@@ -143,7 +268,21 @@ export async function POST(req: NextRequest) {
           });
 
           // Send message and wait for completion (10 min timeout)
-          await session.sendAndWait({ prompt }, 600_000);
+          await session.sendAndWait(
+            {
+              prompt,
+              ...(tmpImagePaths.length > 0
+                ? {
+                    attachments: tmpImagePaths.map((p, i) => ({
+                      type: 'file' as const,
+                      path: p,
+                      displayName: imageAttachments![i]?.filename ?? `image-${i + 1}`,
+                    })),
+                  }
+                : {}),
+            },
+            600_000,
+          );
 
           clearInterval(keepalive);
 
@@ -161,6 +300,10 @@ export async function POST(req: NextRequest) {
           unsubMessages?.();
           unsubReasoning?.();
           unsubError?.();
+          // Cleanup temp image files
+          for (const p of tmpImagePaths) {
+            try { unlinkSync(p); } catch { /* ignore */ }
+          }
           if (session) {
             await session.destroy();
           }
