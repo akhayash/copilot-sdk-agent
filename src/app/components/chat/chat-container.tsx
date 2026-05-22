@@ -67,7 +67,7 @@ function toSlideItem(s: ScenarioSlidePayload, previous?: SlideItem): SlideItem {
 export function ChatContainer() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(process.env.NEXT_PUBLIC_DEFAULT_MODEL || 'claude-opus-4.6');
+  const [selectedModel, setSelectedModel] = useState(process.env.NEXT_PUBLIC_DEFAULT_MODEL || 'claude-opus-4.7');
   const [selectedModelInfo, setSelectedModelInfo] = useState<ModelOption | null>(null);
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState<ReasoningEffortOption>('medium');
   const [slideWork, setSlideWork] = useState<SlideWork>({
