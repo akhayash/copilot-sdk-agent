@@ -86,10 +86,10 @@ export function createScenarioTool(
               },
               bodyMarkdown: {
                 type: 'string',
-                description: 'Refined slide body content — 1-3 short paragraphs (~80-200 words total) with optional subheadings. This is the source text for image generation in image-then-pptx mode, and the narrative shown on slides for refined stories. Strongly recommended on every content slide; omit only for pure title/section divider slides.',
+                description: 'REQUIRED on every content slide (title/section divider slides may use a short placeholder). Refined slide body — 3-5 paragraphs in Japanese (600-1200 chars) or English (350-700 words), with optional subheadings (## xxx), bold, concrete numbers, proper nouns, dates, citations, and before/after contrasts. This is the primary source text for image generation in image-then-pptx mode AND the detailed narrative shown in the slide panel. Never use vague generalities; specify who does what, when, at what cost, and why it matters now. Treat it as a research note giving gpt-image-2 enough material to produce data-specific visuals with Japanese copy.',
               },
             },
-            required: ['number', 'title', 'keyMessage', 'layout', 'bullets', 'notes'],
+            required: ['number', 'title', 'keyMessage', 'layout', 'bullets', 'notes', 'bodyMarkdown'],
           },
         },
         designBrief: {

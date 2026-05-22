@@ -804,6 +804,18 @@ function SlideCard({ slide, mode, isStreaming, onGenerateImage, onRegenerateImag
           </div>
         )}
 
+        {/* Code mode: show bodyMarkdown as read-only preview if present */}
+        {!showImageMode && slide.bodyMarkdown && (
+          <div className="mt-3 rounded-lg border p-3 sm:pl-10" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+              本文（精緻化）
+            </div>
+            <div className="prose prose-sm max-w-none text-xs leading-relaxed" style={{ color: 'var(--foreground)' }}>
+              <Markdown remarkPlugins={[remarkGfm]}>{slide.bodyMarkdown}</Markdown>
+            </div>
+          </div>
+        )}
+
         <div className="mt-3 rounded-lg border p-3 sm:pl-10" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
           <div className="mb-1.5 flex items-center gap-1.5">
             <MessageSquare size={12} style={{ color: 'var(--text-secondary)' }} />
