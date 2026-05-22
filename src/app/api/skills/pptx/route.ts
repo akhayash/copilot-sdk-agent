@@ -196,62 +196,80 @@ async function handleImageEditablePptx(body: PptxCodeRequest): Promise<NextRespo
     );
   }
 
-  const pres = new PptxGenJS();
   // 16:9 inches — must match applyLayoutToSlide expectations
   const SW = 10;
   const SH = 5.625;
-  let fallbackCount = 0;
 
-  // Parallel bbox extraction with per-slide timeout.
-  // Vision LLM inference can take 90-200 s per slide in practice.
+  // Phase 1: Parallel bbox extraction.
+  // Results are collected first so slides can be added in strict order in Phase 2.
   const BBOX_TIMEOUT_MS = 300_000;
-  await Promise.all(
-    slideEntries.map(async (entry) => {
-      if (!entry.image) {
-        // Cache miss — full-bleed fallback
-        const slide = pres.addSlide();
-        slide.background = { color: 'FFFFFF' };
-        slide.addText(
-          entry.scenario?.title ?? `Slide ${entry.slideNumber}`,
-          { x: 0.5, y: SH / 2 - 0.3, w: SW - 1, h: 0.6, fontSize: 24, bold: true, color: '1B1B1B', align: 'center' },
-        );
-        fallbackCount++;
-        return;
-      }
+  type SlideResult =
+    | { kind: 'layout'; layout: Awaited<ReturnType<typeof extractLayout>> }
+    | { kind: 'fallback' };
 
+  const results: SlideResult[] = await Promise.all(
+    slideEntries.map(async (entry): Promise<SlideResult> => {
+      if (!entry.image) return { kind: 'fallback' };
       try {
         const layout = await extractLayout(entry.image, {
           slideNumber: entry.slideNumber,
           timeoutMs: BBOX_TIMEOUT_MS,
         });
-        await applyLayoutToSlide(pres, layout, entry.image);
+        return { kind: 'layout', layout };
       } catch (err) {
         console.warn(
           `[pptx] bbox extraction failed for slide ${entry.slideNumber} — using full-bleed fallback:`,
           err instanceof Error ? err.message : String(err),
         );
-        // Full-bleed fallback (Hybrid C)
-        const slide = pres.addSlide();
-        const dataUri = `data:image/png;base64,${entry.image.toString('base64')}`;
-        slide.addImage({ data: dataUri, x: 0, y: 0, w: SW, h: SH });
-        fallbackCount++;
-      }
-
-      // Attach speaker notes regardless of mode
-      const notes = entry.scenario?.notes?.trim();
-      if (notes) {
-        // pptxgenjs exposes slides array at runtime but not in typings
-        const slides = (pres as unknown as { slides: Array<{ addNotes: (n: string) => void }> }).slides;
-        const lastSlide = slides[slides.length - 1];
-        if (lastSlide) lastSlide.addNotes(notes);
+        return { kind: 'fallback' };
       }
     }),
   );
+
+  // Phase 2: Add slides in strict order (critical — Promise.all does NOT guarantee addSlide() call order).
+  const pres = new PptxGenJS();
+  let fallbackCount = 0;
+
+  for (let i = 0; i < slideEntries.length; i++) {
+    const entry = slideEntries[i];
+    const result = results[i];
+
+    if (result.kind === 'layout' && entry.image) {
+      await applyLayoutToSlide(pres, result.layout, entry.image);
+    } else {
+      const slide = pres.addSlide();
+      if (entry.image) {
+        const dataUri = `data:image/png;base64,${entry.image.toString('base64')}`;
+        slide.addImage({ data: dataUri, x: 0, y: 0, w: SW, h: SH });
+      } else {
+        slide.background = { color: 'FFFFFF' };
+        slide.addText(
+          entry.scenario?.title ?? `Slide ${entry.slideNumber}`,
+          { x: 0.5, y: SH / 2 - 0.3, w: SW - 1, h: 0.6, fontSize: 24, bold: true, color: '1B1B1B', align: 'center' },
+        );
+      }
+      fallbackCount++;
+    }
+
+    // Attach speaker notes regardless of mode
+    const notes = entry.scenario?.notes?.trim();
+    if (notes) {
+      const slides = (pres as unknown as { slides: Array<{ addNotes: (n: string) => void }> }).slides;
+      const lastSlide = slides[slides.length - 1];
+      if (lastSlide) lastSlide.addNotes(notes);
+    }
+  }
 
   const pptxBuffer = (await pres.write({ outputType: 'arraybuffer' })) as ArrayBuffer;
   const headers: Record<string, string> = {
     'x-pptx-fallback-count': String(fallbackCount),
   };
+
+  // Quality gate — fire-and-forget, must not block the response
+  const jobId = randomUUID();
+  kickOffQualityCheck(jobId, pptxBuffer, slideEntries);
+  headers['x-pptx-job-id'] = jobId;
+
   return pptxResponse(pptxBuffer, body.title, headers);
 }
 

@@ -261,10 +261,88 @@ export async function extractLayout(
   }
 }
 
+/** Normalize hex color to #RRGGBB, or return raw string if unrecognized. */
+function normalizeColor(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed;
+  if (/^#[0-9a-fA-F]{8}$/.test(trimmed)) return trimmed.slice(0, 7);
+  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
+    return "#" + [...trimmed.slice(1)].map((c) => c + c).join("");
+  }
+  const rgb = trimmed.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i);
+  if (rgb) {
+    return (
+      "#" +
+      [rgb[1], rgb[2], rgb[3]]
+        .map((v) => parseInt(v).toString(16).padStart(2, "0"))
+        .join("")
+    );
+  }
+  return trimmed;
+}
+
+/** Clamp bbox values to [0,1] with positive w/h. */
+function clampBbox(bbox: unknown): unknown {
+  if (!Array.isArray(bbox) || bbox.length !== 4) return bbox;
+  let [x, y, w, h] = bbox as number[];
+  x = Math.max(0, Math.min(1, x));
+  y = Math.max(0, Math.min(1, y));
+  w = Math.max(0.001, Math.min(1 - x, w));
+  h = Math.max(0.001, Math.min(1 - y, h));
+  return [x, y, w, h];
+}
+
+/**
+ * Normalize LLM-produced layout JSON to fit strict schema constraints:
+ * - z-layer clamped to 1-4
+ * - hex colors normalized to #RRGGBB
+ * - bbox values clamped to [0,1]
+ * - picture.sourceCrop defaulted to full-image if missing
+ */
+function normalizeLayout(obj: unknown): unknown {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return obj;
+  const layout = obj as Record<string, unknown>;
+  if (!Array.isArray(layout.elements)) return layout;
+
+  layout.elements = layout.elements.map((el: unknown) => {
+    if (!el || typeof el !== "object" || Array.isArray(el)) return el;
+    const e = { ...(el as Record<string, unknown>) };
+
+    if (typeof e.z === "number") {
+      e.z = Math.max(1, Math.min(4, Math.round(e.z)));
+    }
+    if (Array.isArray(e.bbox)) {
+      e.bbox = clampBbox(e.bbox);
+    }
+    for (const key of ["color", "fill"] as const) {
+      if (typeof e[key] === "string") {
+        e[key] = normalizeColor(e[key] as string);
+      }
+    }
+    if (e.line && typeof e.line === "object" && !Array.isArray(e.line)) {
+      const line = { ...(e.line as Record<string, unknown>) };
+      if (typeof line.color === "string") {
+        line.color = normalizeColor(line.color);
+      }
+      e.line = line;
+    }
+    if (e.type === "picture") {
+      if (!Array.isArray(e.sourceCrop)) {
+        e.sourceCrop = [0, 0, 1, 1];
+      } else {
+        e.sourceCrop = clampBbox(e.sourceCrop);
+      }
+    }
+    return e;
+  });
+
+  return layout;
+}
+
 function safeJsonParse(raw: string): unknown {
   if (!raw) return null;
   try {
-    return JSON.parse(extractJsonObject(raw));
+    return normalizeLayout(JSON.parse(extractJsonObject(raw)));
   } catch {
     return null;
   }
