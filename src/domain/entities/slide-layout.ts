@@ -21,6 +21,7 @@ export type Bbox = readonly [number, number, number, number];
 export type ZLayer = 1 | 2 | 3 | 4;
 
 export type TextAlign = 'left' | 'center' | 'right';
+export type VerticalAlign = 'top' | 'middle' | 'bottom';
 
 export interface TextboxElement {
   id: string;
@@ -32,6 +33,10 @@ export interface TextboxElement {
   bold?: boolean;
   italic?: boolean;
   align?: TextAlign;
+  /** Vertical alignment within the textbox. */
+  valign?: VerticalAlign;
+  /** Font face name (e.g. 'Meiryo', 'Noto Sans JP'). */
+  fontFace?: string;
   /** Hex color WITH leading '#' (e.g. '#1B1B1B'). */
   color?: string;
 }
@@ -80,6 +85,8 @@ export type LayoutElement =
 
 export interface SlideLayout {
   slideNumber: number;
+  /** Slide background color in #RRGGBB. If present, applied as slide.background. */
+  slideBackground?: string;
   elements: LayoutElement[];
 }
 
@@ -103,6 +110,8 @@ const TextboxSchema = z.object({
   bold: z.boolean().optional(),
   italic: z.boolean().optional(),
   align: z.enum(['left', 'center', 'right']).optional(),
+  valign: z.enum(['top', 'middle', 'bottom']).optional(),
+  fontFace: z.string().optional(),
   color: HexColorSchema.optional(),
 });
 
@@ -150,6 +159,8 @@ const LayoutElementSchema = z.discriminatedUnion('type', [
 export const SlideLayoutSchema = z
   .object({
     slideNumber: z.number().int().positive(),
+    /** Slide background hex color #RRGGBB – applied as slide.background. */
+    slideBackground: HexColorSchema.optional(),
     elements: z.array(LayoutElementSchema).min(0),
   })
   .superRefine((data, ctx) => {
