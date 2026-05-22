@@ -15,12 +15,53 @@
 - 作業ブランチを remote に push 後、PR を作成する。
 - PR には目的、主要変更点、テスト結果、影響範囲を記載する。
 - レビュー指摘対応後、最終確認してマージする。
+- 完了条件は「PR がマージ済み」かつ「作成した worktree が削除済み」の両方を満たすこと。
 
 ### 1.2 作業完了フロー (Worktree 片付け)
 
 - PR マージ後、不要になった worktree を削除する。
 - ブランチ削除後に `git worktree prune` を実行し、参照を掃除する。
 - 次作業前に `git worktree list` で不要 worktree が残っていないことを確認する。
+
+### 1.3 GitHub 具体オペレーション
+
+1. 作業ブランチを push
+
+```bash
+git push -u origin <branch-name>
+```
+
+2. PR を作成 (推奨: MCP)
+
+- `github-pull-request_create_pull_request` で作成する。
+- 必須項目: `title`, `body`, `head`, `base`, `repo.owner`, `repo.name`。
+
+3. PR 状態を確認 (必要に応じて)
+
+```bash
+gh pr view <pr-number> --repo <owner>/<repo> --json baseRefName,mergeable,mergeStateStatus,state
+```
+
+4. PR をマージ
+
+- GitHub UI でマージ、または利用可能なら gh コマンドでマージする。
+
+```bash
+gh pr merge <pr-number> --squash --delete-branch --repo <owner>/<repo>
+```
+
+5. ローカル後片付け (必須)
+
+```bash
+git worktree remove <path-to-worktree>
+git worktree prune
+git worktree list
+```
+
+6. Done 判定
+
+- PR が merged 状態。
+- 対象 worktree が `git worktree list` に残っていない。
 
 参考コマンド例:
 
