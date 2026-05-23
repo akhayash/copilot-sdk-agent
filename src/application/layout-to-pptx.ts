@@ -58,6 +58,31 @@ function hex(color: string | undefined): string | undefined {
   return color.startsWith("#") ? color.slice(1) : color;
 }
 
+function containsCjk(text: string): boolean {
+  return /[\u3040-\u30ff\u3400-\u9fff]/.test(text);
+}
+
+function normalizeFontFace(fontFace: string | undefined, text: string): string {
+  if (containsCjk(text)) return "Noto Sans CJK JP";
+  if (!fontFace || /^(meiryo|yu gothic|ms gothic|calibri)$/i.test(fontFace.trim())) {
+    return "DejaVu Sans";
+  }
+  return fontFace;
+}
+
+function scaleFontSize(fontSize: number): number {
+  const scale =
+    fontSize >= 30 ? 0.72 :
+      fontSize >= 16 ? 0.82 :
+        fontSize >= 12 ? 0.9 :
+          1;
+  return Math.max(6, Math.round(fontSize * scale));
+}
+
+function isKpiText(text: string, fontSize: number): boolean {
+  return fontSize >= 36 && /[0-9]/.test(text) && /[\u3400-\u9fff]/.test(text);
+}
+
 /**
  * Crop a region of the source image (0..1 normalized) and return a PNG
  * data URI suitable for `slide.addImage({ data })`.
@@ -169,7 +194,11 @@ async function renderElement(
       // Skip invisible shapes (no fill AND no line) — they add nothing visually
       // and pollute the PowerPoint element tree making editing harder.
       if (!el.fill && !el.line) return;
-      slide.addShape(pres.ShapeType.rect, opts);
+      const shapeType =
+        el.shape === "ROUND_RECTANGLE"
+          ? pres.ShapeType.roundRect
+          : pres.ShapeType.rect;
+      slide.addShape(shapeType, opts);
       return;
     }
     case "line": {
@@ -184,7 +213,8 @@ async function renderElement(
       const INSET_IN = 0.04; // ~3px at 10-inch slide
       const rawX = Math.max(0, rect.x - INSET_IN);
       const rawY = Math.max(0, rect.y - INSET_IN);
-      const rawW = rect.w + INSET_IN * 2;
+      const kpiText = isKpiText(el.text, el.fontSize);
+      const rawW = rect.w * (kpiText ? 1.35 : 1) + INSET_IN * 2;
       const rawH = rect.h + INSET_IN * 2;
       // Clamp to slide bounds so text box never extends beyond the slide edge.
       const clampedW = Math.min(rawW, dims.w - rawX);
@@ -194,18 +224,17 @@ async function renderElement(
         y: rawY,
         w: clampedW,
         h: clampedH,
-        fontSize: el.fontSize,
+        fontSize: scaleFontSize(el.fontSize),
         bold: el.bold ?? false,
         italic: el.italic ?? false,
         align: el.align ?? 'left',
         valign: el.valign ?? 'top',
-        // autoFit allows PowerPoint to expand the textbox if needed;
-        // it's safer than shrinkText which can make text illegibly small.
-        autoFit: true,
-        wrap: true,
+        fit: 'none',
+        margin: 0,
+        wrap: !kpiText,
       };
       if (el.color) textOpts.color = hex(el.color);
-      if (el.fontFace) textOpts.fontFace = el.fontFace;
+      textOpts.fontFace = normalizeFontFace(el.fontFace, el.text);
       slide.addText(el.text, textOpts);
       return;
     }

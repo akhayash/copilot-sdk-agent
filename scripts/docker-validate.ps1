@@ -11,7 +11,11 @@
 
 .PARAMETER ImageId
     A cached image ID (UUID) to run through the full pipeline test.
-    If omitted, only health + dependency checks are run.
+    If ImageId and ImagePath are omitted, only health + dependency checks are run.
+
+.PARAMETER ImagePath
+    A local PNG/JPEG/WebP slide image to send directly to /api/test/pipeline.
+    This avoids depending on Azure image generation or in-memory image cache.
 
 .EXAMPLE
     # Health check only
@@ -19,9 +23,13 @@
 
     # Full pipeline with a specific imageId
     .\scripts\docker-validate.ps1 -ImageId "abc123-..."
+
+    # Full pipeline with a local fixture image
+    .\scripts\docker-validate.ps1 -ImagePath ".\test-fixtures\slide.png"
 #>
 param(
     [string]$ImageId = "",
+    [string]$ImagePath = "",
     [int]$Port = 3000,
     [int]$StartupTimeoutSec = 120
 )
@@ -72,14 +80,41 @@ if ($loopReady) {
 }
 
 # ── Optional full pipeline test ──────────────────────────────────────────────
-if ($ImageId -ne "") {
-    Write-Host "`n=== Step 5: Full pipeline test (imageId=$ImageId) ===" -ForegroundColor Cyan
-    $body = @{ imageId = $ImageId; slideNumber = 1 } | ConvertTo-Json
+if ($ImageId -ne "" -or $ImagePath -ne "") {
+    if ($ImageId -ne "" -and $ImagePath -ne "") {
+        Write-Error "Specify either -ImageId or -ImagePath, not both"
+        exit 1
+    }
+
+    if ($ImagePath -ne "") {
+        if (-not (Test-Path $ImagePath)) {
+            Write-Error "ImagePath not found: $ImagePath"
+            exit 1
+        }
+        $ext = [IO.Path]::GetExtension($ImagePath).ToLowerInvariant()
+        $mimeType = switch ($ext) {
+            ".png" { "image/png" }
+            ".jpg" { "image/jpeg" }
+            ".jpeg" { "image/jpeg" }
+            ".webp" { "image/webp" }
+            default {
+                Write-Error "Unsupported ImagePath extension: $ext"
+                exit 1
+            }
+        }
+        Write-Host "`n=== Step 5: Full pipeline test (imagePath=$ImagePath) ===" -ForegroundColor Cyan
+        $imageBase64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path $ImagePath)))
+        $body = @{ imageBase64 = $imageBase64; mimeType = $mimeType; slideNumber = 1 } | ConvertTo-Json
+    } else {
+        Write-Host "`n=== Step 5: Full pipeline test (imageId=$ImageId) ===" -ForegroundColor Cyan
+        $body = @{ imageId = $ImageId; slideNumber = 1 } | ConvertTo-Json
+    }
     try {
         $pipeline = Invoke-RestMethod "$BaseUrl/api/test/pipeline" `
             -Method POST `
             -ContentType "application/json" `
-            -Body $body
+            -Body $body `
+            -TimeoutSec 300
         $pipeline | ConvertTo-Json -Depth 10
 
         if ($pipeline.ok) {
@@ -93,7 +128,7 @@ if ($ImageId -ne "") {
         Write-Warning "Pipeline test request failed: $_"
     }
 } else {
-    Write-Host "`n  Tip: pass -ImageId <uuid> to run the full pipeline test" -ForegroundColor Yellow
+    Write-Host "`n  Tip: pass -ImageId <uuid> or -ImagePath <file> to run the full pipeline test" -ForegroundColor Yellow
     Write-Host "  Generate an image first via the app UI or /api/skills/image" -ForegroundColor Yellow
 }
 

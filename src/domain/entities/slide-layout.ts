@@ -44,8 +44,8 @@ export interface TextboxElement {
 export interface AutoShapeElement {
   id: string;
   type: 'auto_shape';
-  /** Currently only RECTANGLE is supported (also used for thin border lines). */
-  shape: 'RECTANGLE';
+  /** Supported rectangle variants. */
+  shape: 'RECTANGLE' | 'ROUND_RECTANGLE';
   bbox: Bbox;
   z: ZLayer;
   /** Hex color WITH leading '#' (e.g. '#0078D4'). */
@@ -118,7 +118,7 @@ const TextboxSchema = z.object({
 const AutoShapeSchema = z.object({
   id: z.string().min(1),
   type: z.literal('auto_shape'),
-  shape: z.literal('RECTANGLE'),
+  shape: z.enum(['RECTANGLE', 'ROUND_RECTANGLE']),
   bbox: BboxSchema,
   z: ZLayerSchema,
   fill: HexColorSchema.optional(),

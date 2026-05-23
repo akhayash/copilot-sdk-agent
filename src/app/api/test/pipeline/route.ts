@@ -8,6 +8,7 @@
  *
  * Request body:
  *   { imageId: string, slideNumber?: number }
+ *   { imageBase64: string, mimeType?: "image/png"|"image/jpeg"|"image/webp", slideNumber?: number }
  *
  * Example:
  *   curl -s -X POST http://localhost:3000/api/test/pipeline \
@@ -38,9 +39,37 @@ interface StepResult {
   error?: string;
 }
 
+interface PipelineRequest {
+  imageId?: string;
+  imageBase64?: string;
+  mimeType?: string;
+  slideNumber?: number;
+  includeDebug?: boolean;
+}
+
+const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
+const ALLOWED_INLINE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+
 function timed<T>(label: string, fn: () => Promise<T>): Promise<{ result: T; ms: number }> {
   const start = Date.now();
   return fn().then((result) => ({ result, ms: Date.now() - start }));
+}
+
+function decodeInlineImage(input: string): { data: Buffer; mimeType: string } {
+  const match = input.match(/^data:(image\/(?:png|jpeg|webp));base64,(.+)$/);
+  const mimeType = match?.[1] ?? 'image/png';
+  const base64 = match?.[2] ?? input;
+  const data = Buffer.from(base64, 'base64');
+  if (data.byteLength === 0) {
+    throw new Error('imageBase64 did not decode to any bytes');
+  }
+  if (data.byteLength > MAX_INLINE_IMAGE_BYTES) {
+    throw new Error(`imageBase64 exceeds ${MAX_INLINE_IMAGE_BYTES} byte limit`);
+  }
+  if (!ALLOWED_INLINE_MIME_TYPES.has(mimeType)) {
+    throw new Error(`unsupported inline image mimeType: ${mimeType}`);
+  }
+  return { data, mimeType };
 }
 
 export async function POST(req: NextRequest) {
@@ -49,32 +78,56 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'not available in production (set PIPELINE_TEST_ENABLED=true to enable)' }, { status: 403 });
   }
 
-  const body = (await req.json()) as { imageId?: string; slideNumber?: number };
-  const { imageId, slideNumber = 1 } = body;
+  const body = (await req.json()) as PipelineRequest;
+  const { imageId, imageBase64, slideNumber = 1, includeDebug = false } = body;
 
-  if (!imageId) {
-    return NextResponse.json({ error: 'imageId is required' }, { status: 400 });
+  if (!imageId && !imageBase64) {
+    return NextResponse.json({ error: 'imageId or imageBase64 is required' }, { status: 400 });
   }
 
   const steps: StepResult[] = [];
   const jobId = `pipeline-test-${randomUUID()}`;
 
-  // ── Step 1: Image cache lookup ────────────────────────────────────────────
-  const cached = getImage(imageId);
-  steps.push({
-    step: '1_image_cache',
-    ok: !!cached,
-    durationMs: 0,
-    detail: cached
-      ? { bytes: cached.data.byteLength, mimeType: cached.mimeType }
-      : null,
-    error: cached ? undefined : `imageId "${imageId}" not found in cache`,
-  });
-  if (!cached) {
-    return NextResponse.json({ ok: false, steps });
+  // ── Step 1: Image input ───────────────────────────────────────────────────
+  let imageBuffer: Buffer | null = null;
+  let imageMimeType: string | null = null;
+  let imageSource: 'cache' | 'inline' = 'cache';
+  let inputError: string | undefined;
+
+  if (imageBase64) {
+    imageSource = 'inline';
+    try {
+      const decoded = decodeInlineImage(imageBase64);
+      imageBuffer = decoded.data;
+      imageMimeType = body.mimeType ?? decoded.mimeType;
+      if (!ALLOWED_INLINE_MIME_TYPES.has(imageMimeType)) {
+        throw new Error(`unsupported inline image mimeType: ${imageMimeType}`);
+      }
+    } catch (e) {
+      inputError = e instanceof Error ? e.message : String(e);
+    }
+  } else if (imageId) {
+    const cached = getImage(imageId);
+    if (cached) {
+      imageBuffer = cached.data;
+      imageMimeType = cached.mimeType;
+    } else {
+      inputError = `imageId "${imageId}" not found in cache`;
+    }
   }
 
-  const imageBuffer = cached.data;
+  steps.push({
+    step: '1_image_input',
+    ok: !!imageBuffer,
+    durationMs: 0,
+    detail: imageBuffer
+      ? { source: imageSource, bytes: imageBuffer.byteLength, mimeType: imageMimeType }
+      : null,
+    error: inputError,
+  });
+  if (!imageBuffer) {
+    return NextResponse.json({ ok: false, steps });
+  }
 
   // ── Step 2: bbox extraction (Vision LLM) ─────────────────────────────────
   let layout: Awaited<ReturnType<typeof extractLayout>> | null = null;
@@ -91,6 +144,7 @@ export async function POST(req: NextRequest) {
         elementCount: layout.elements.length,
         slideBackground: layout.slideBackground,
         elements: layout.elements.map((e) => ({ id: e.id, type: e.type, z: e.z })),
+        layout: includeDebug ? layout : undefined,
       },
     });
   } catch (e) {
@@ -142,7 +196,13 @@ export async function POST(req: NextRequest) {
       step: '4_libreoffice_render',
       ok: true,
       durationMs: ms,
-      detail: { slideCount: result.length, paths: result.map((r) => r.pngPath) },
+      detail: {
+        slideCount: result.length,
+        paths: result.map((r) => r.pngPath),
+        renderedPngBase64: includeDebug && result[0]
+          ? (await fs.readFile(result[0].pngPath)).toString('base64')
+          : undefined,
+      },
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

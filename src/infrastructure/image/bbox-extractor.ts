@@ -74,19 +74,19 @@ const SYSTEM_PROMPT = [
   '  "slideBackground": "#RRGGBB",  // REQUIRED if the slide has a solid background color',
   '  "elements": [',
   '    // textbox:',
-  '    { "id": "t1", "type": "textbox", "bbox": [x,y,w,h], "z": 3,',
+  '    { "id": "t1", "type": "textbox", "bbox": [x,y,w,h], "z": 4,',
   '      "text": "exact text", "fontSize": <pt>, "bold": <bool>, "italic": <bool>,',
   '      "align": "left"|"center"|"right", "valign": "top"|"middle"|"bottom",',
   '      "fontFace": "Meiryo UI",  // use "Meiryo UI" for Japanese, "Calibri" for Latin',
   '      "color": "#RRGGBB" },',
   '    // auto_shape (non-background rectangles only):',
-  '    { "id": "s1", "type": "auto_shape", "shape": "RECTANGLE", "bbox": [x,y,w,h], "z": 2,',
+  '    { "id": "s1", "type": "auto_shape", "shape": "RECTANGLE"|"ROUND_RECTANGLE", "bbox": [x,y,w,h], "z": 2,',
   '      "fill": "#RRGGBB", "line": { "color": "#RRGGBB", "width": <pt> } },',
   '    // line:',
   '    { "id": "l1", "type": "line", "bbox": [x,y,w,h], "z": 2,',
   '      "line": { "color": "#RRGGBB", "width": <pt> } },',
   '    // picture (photos/icons/charts only, NOT background):',
-  '    { "id": "p1", "type": "picture", "bbox": [x,y,w,h], "z": 1, "sourceCrop": [x,y,w,h] }',
+  '    { "id": "p1", "type": "picture", "bbox": [x,y,w,h], "z": 3, "sourceCrop": [x,y,w,h] }',
   "  ]",
   "}",
   "",
@@ -95,12 +95,12 @@ const SYSTEM_PROMPT = [
   "- [x, y, w, h] = left edge, top edge, width, height.",
   "- For textboxes: extend bbox by +5% width and +15% height beyond the visible glyph boundary to prevent PowerPoint clipping.",
   "  Example: visible text x=0.05..0.45 → set bbox [0.03, y-0.01, 0.44, h+0.03].",
-  "- z-order: 1=deep background, 2=shapes/dividers, 3=main text, 4=overlay highlights.",
+  "- z-order: 1=full-slide background picture only, 2=decorative shapes/dividers, 3=charts/icons/photos, 4=text and labels.",
   "",
   "=== BACKGROUND RULE ===",
   '- If the slide has a solid background color, set "slideBackground": "#RRGGBB" at the top level.',
   '- Do NOT create an auto_shape that covers the entire slide (bbox ≈ [0,0,1,1]) just for the background color. Use "slideBackground" instead.',
-  '- Use auto_shape ONLY for non-background decorative rectangles (header bands, cards, dividers, etc.).',
+  '- Use auto_shape ONLY for non-background decorative rectangles (header bands, cards, dividers, etc.). Use shape "ROUND_RECTANGLE" for cards/panels with rounded corners.',
   "",
   "=== TEXT EXTRACTION RULES ===",
   "- Extract ALL visible text — headings, body, labels, footnotes, page numbers.",
@@ -335,6 +335,21 @@ function clampBbox(bbox: unknown): unknown {
   return [x, y, w, h];
 }
 
+function bboxArea(bbox: number[]): number {
+  return bbox[2] * bbox[3];
+}
+
+function containsBboxCenter(container: number[], inner: number[]): boolean {
+  const cx = inner[0] + inner[2] / 2;
+  const cy = inner[1] + inner[3] / 2;
+  return (
+    cx >= container[0] &&
+    cy >= container[1] &&
+    cx <= container[0] + container[2] &&
+    cy <= container[1] + container[3]
+  );
+}
+
 /**
  * Normalize LLM-produced layout JSON to fit strict schema constraints:
  * - z-layer clamped to 1-4
@@ -379,6 +394,16 @@ function normalizeLayout(obj: unknown): unknown {
     }
     if (e.type === "picture") {
       const bboxVal = Array.isArray(e.bbox) ? (e.bbox as number[]) : null;
+      const isFullBleed =
+        bboxVal &&
+        bboxVal[0] <= 0.03 &&
+        bboxVal[1] <= 0.03 &&
+        bboxVal[2] >= 0.97 &&
+        bboxVal[3] >= 0.97;
+      if (!isFullBleed && typeof e.z === "number" && e.z < 3) {
+        // Non-background pictures (icons/charts/photos) must sit above card shapes.
+        e.z = 3;
+      }
       if (!Array.isArray(e.sourceCrop)) {
         // Default sourceCrop to bbox: for icons/images placed on the slide,
         // the region to cut from the source image equals the element's position.
@@ -386,6 +411,12 @@ function normalizeLayout(obj: unknown): unknown {
       } else {
         e.sourceCrop = clampBbox(e.sourceCrop);
       }
+    }
+    if (e.type === "auto_shape" && e.shape !== "ROUND_RECTANGLE") {
+      e.shape = "RECTANGLE";
+    }
+    if (e.type === "textbox" && typeof e.z === "number" && e.z < 4) {
+      e.z = 4;
     }
     // Normalize valign to allowed values
     if (typeof e.valign === "string" && !["top", "middle", "bottom"].includes(e.valign as string)) {
@@ -406,6 +437,48 @@ function normalizeLayout(obj: unknown): unknown {
     seenIds.add(e.id as string);
     return e;
   });
+
+  // Large charts/dashboard regions should remain as a picture crop. If the
+  // model returns a large picture inside a decorative card, expand the crop to
+  // the containing card and draw it above text/shapes. This avoids low-fidelity
+  // pseudo-reconstruction of charts while preserving editability elsewhere.
+  const elements = layout.elements as Array<Record<string, unknown>>;
+  const cards = elements.filter((e) => e.type === "auto_shape" && Array.isArray(e.bbox));
+  const promotedPictureRegions: number[][] = [];
+  for (const e of elements) {
+    if (e.type !== "picture" || !Array.isArray(e.bbox)) continue;
+    const pictureBbox = e.bbox as number[];
+    if (bboxArea(pictureBbox) < 0.08) continue;
+
+    const containingCard = cards
+      .map((card) => ({ card, bbox: card.bbox as number[] }))
+      .filter(({ bbox }) => {
+        const area = bboxArea(bbox);
+        return (
+          containsBboxCenter(bbox, pictureBbox) &&
+          area >= bboxArea(pictureBbox) &&
+          area <= bboxArea(pictureBbox) * 2.5
+        );
+      })
+      .sort((a, b) => bboxArea(a.bbox) - bboxArea(b.bbox))[0];
+
+    if (containingCard) {
+      e.bbox = [...containingCard.bbox];
+      e.sourceCrop = [...containingCard.bbox];
+      e.z = 4;
+      promotedPictureRegions.push(e.bbox as number[]);
+    }
+  }
+
+  if (promotedPictureRegions.length > 0) {
+    layout.elements = elements.filter((e) => {
+      if (e.type === "picture") return true;
+      if (!Array.isArray(e.bbox)) return true;
+      return !promotedPictureRegions.some((region) =>
+        containsBboxCenter(region, e.bbox as number[]),
+      );
+    });
+  }
 
   return layout;
 }
