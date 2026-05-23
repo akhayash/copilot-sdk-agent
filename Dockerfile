@@ -29,11 +29,26 @@ ENV PORT=3000
 # LibreOffice writes to $HOME/.config; point it at a writable tmpfs location.
 ENV HOME=/tmp
 
-# Install LibreOffice (PPTX rendering), poppler (pdftoppm), Noto CJK fonts (Japanese),
-# and fontconfig. These are required by the async quality gate that renders the
-# generated PPTX to PNG for pixelmatch / sharp-phash comparison (Phase 4B).
+# Install Azure CLI for local Docker validation with mounted `az login`
+# credentials, plus LibreOffice (PPTX rendering), poppler (pdftoppm),
+# Noto CJK fonts (Japanese), and fontconfig.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        gnupg \
+        lsb-release \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -sLS https://packages.microsoft.com/keys/microsoft.asc \
+        | gpg --dearmor > /etc/apt/keyrings/microsoft.gpg \
+    && chmod go+r /etc/apt/keyrings/microsoft.gpg \
+    && AZ_DIST="$(lsb_release -cs)" \
+    && echo "Types: deb\nURIs: https://packages.microsoft.com/repos/azure-cli/\nSuites: ${AZ_DIST}\nComponents: main\nArchitectures: $(dpkg --print-architecture)\nSigned-by: /etc/apt/keyrings/microsoft.gpg" \
+        > /etc/apt/sources.list.d/azure-cli.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        azure-cli \
         libreoffice-impress \
         libreoffice-core \
         poppler-utils \

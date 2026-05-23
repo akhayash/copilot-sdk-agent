@@ -85,9 +85,12 @@ PPTX 生成には 2 つのモードがある：
 4. 「PPTX を生成」→ bbox 抽出 → レイアウト再構築 → PPTX ダウンロード
 5. ダウンロード完了後、非同期で品質バッジ（pass/warn/fail）が表示される（LibreOffice + pixelmatch + pHash 比較）
 
+画像モードの PPTX は、Azure 画像モデルが返した画像のアスペクト比に合わせてカスタムスライドサイズを定義する。`gpt-image-2` の横長出力は 1536×1024（3:2）なので、16:9 固定にすると bbox と文字サイズが崩れるため。
+
 **ランタイム依存**:
 
-- Docker イメージに `libreoffice-impress` + `poppler-utils` + `fonts-noto-cjk` が同梱されている必要がある（Phase 7.1 で対応済み）。`pnpm dev` でローカル動作させる場合はホストに `soffice` と `pdftoppm` がインストールされていること。
+- Docker イメージに `azure-cli` + `libreoffice-impress` + `poppler-utils` + `fonts-noto-cjk` が同梱されている必要がある。`pnpm dev` でローカル動作させる場合はホストに `soffice` と `pdftoppm` がインストールされていること。
+- ローカル Docker で `IMAGE_AUTH_MODE=entra` を使う場合、`docker-compose.yml` は `${USERPROFILE}/.azure-docker` を `/azure` にマウントし、`AZURE_CONFIG_DIR=/azure` を設定する。初回だけ `docker exec -it copilot-sdk-agent-local az login --use-device-code` を実行すれば、以後の rebuild/recreate では同じ Linux 用 Azure CLI キャッシュを再利用できる。
 - Container Apps のメモリは **最低 2 GiB** が必要（LibreOffice ピーク 200–400 MB × 並行 + Node + sharp で 1.2–1.6 GiB）。
 - `minReplicas: 1` で cold start（soffice 初回起動 5–10 秒）を回避する。
 - フォールバック: bbox 抽出失敗時は Hybrid C（背景画像 + タイトル帯 + 半透明本文パネル）に降格して必ず PPTX を返す。レスポンスヘッダ `x-pptx-fallback: hybrid-c` または `hybrid-c-partial; slides=2,5` で通知される。

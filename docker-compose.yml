@@ -23,6 +23,14 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - AZURE_CONFIG_DIR=/azure
+    volumes:
+      # Persist a Linux Azure CLI login cache for local Docker validation.
+      # Run once after container start:
+      #   docker exec -it copilot-sdk-agent-local az login --use-device-code
+      - type: bind
+        source: ${USERPROFILE}/.azure-docker
+        target: /azure
     # LibreOffice writes runtime profiles to /tmp per-PID; give it enough room.
     tmpfs:
       - /tmp:size=512m
