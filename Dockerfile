@@ -26,12 +26,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
-# LibreOffice writes to $HOME/.config; point it at a writable tmpfs location.
-ENV HOME=/tmp
 
 # Install Azure CLI for local Docker validation with mounted `az login`
-# credentials, plus LibreOffice (PPTX rendering), poppler (pdftoppm),
-# Noto CJK fonts (Japanese), and fontconfig.
+# credentials, plus Noto CJK fonts (Japanese) and fontconfig.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         apt-transport-https \
@@ -49,26 +46,13 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         azure-cli \
-        libreoffice-impress \
-        libreoffice-core \
-        poppler-utils \
         fonts-noto-cjk \
         fontconfig \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Warm up the UNO runtime so the first runtime conversion is not the one
-# paying the jar-compilation cost. Use a dedicated build-time profile to
-# avoid colliding with the per-PID runtime profiles (-env:UserInstallation).
-RUN soffice --headless \
-        -env:UserInstallation=file:///tmp/uno-warmup-build \
-        --convert-to pdf \
-        --outdir /tmp \
-        /usr/share/doc/libreoffice-core/README || true \
-    && rm -rf /tmp/uno-warmup-build /tmp/README.pdf
-
 # Sanity check: image must include Noto CJK fonts, otherwise Japanese slides
-# render as tofu in the quality-gate PNGs. Fail the build if missing.
+# may render as tofu. Fail the build if missing.
 RUN fc-list | grep -i noto >/dev/null \
     || (echo "ERROR: Noto fonts not installed" >&2 && exit 1)
 

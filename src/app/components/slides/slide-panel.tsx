@@ -5,16 +5,14 @@
 
 'use client';
 
-import React, { useMemo, useState, useRef, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Layers, Presentation, Download, Check, Code, MessageSquare, Layout, Sparkles, ImagePlus } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { SlideWork, SlideItem } from '@/domain/entities/slide-work';
 import { ModeToggle, type GenerationMode } from './mode-toggle';
 import { SlideImageCard } from './slide-image-card';
-import { SlideBodyEditor } from './slide-body-editor';
-
-const LAYOUT_LABELS: Record<string, string> = {
+import { SlideBodyEditor } from './slide-body-editor';const LAYOUT_LABELS: Record<string, string> = {
   title: 'タイトル', agenda: 'アジェンダ', section: 'セクション区切り',
   bullets: '箇条書き', cards: 'カード並列', stats: '統計ハイライト',
   comparison: '比較', timeline: 'タイムライン', diagram: '概念図', summary: 'まとめ',
@@ -34,7 +32,7 @@ function WorkflowStepper({
   imagesReady: boolean;
   hasPptx: boolean;
 }) {
-  const isImageMode = mode === 'image-bleed' || mode === 'image-editable';
+  const isImageMode = mode === 'image-bleed';
 
   // Steps definition
   const steps = isImageMode
@@ -101,8 +99,6 @@ function WorkflowFooter({
   anyImageGenerating,
   isGenerating,
   isStreaming,
-  elapsedSeconds,
-  bboxPhase,
   onCodeGenerate,
   onCodeDownload,
   onImageGenerate,
@@ -114,14 +110,12 @@ function WorkflowFooter({
   anyImageGenerating: boolean;
   isGenerating: boolean;
   isStreaming: boolean;
-  elapsedSeconds: number;
-  bboxPhase: 'vision' | 'pptx' | null;
   onCodeGenerate?: () => void;
   onCodeDownload: () => void;
   onImageGenerate?: () => void;
   onImagePptx: () => void;
 }) {
-  const isImageMode = mode === 'image-bleed' || mode === 'image-editable';
+  const isImageMode = mode === 'image-bleed';
 
   let label: React.ReactNode;
   let icon: React.ReactNode;
@@ -159,11 +153,7 @@ function WorkflowFooter({
     } else {
       // images ready → PPTX
       if (isGenerating) {
-        label = bboxPhase === 'pptx'
-          ? `PPTX 組み立て中... ${elapsedSeconds}s`
-          : bboxPhase === 'vision'
-            ? `画像解析中... ${elapsedSeconds}s`
-            : '生成中...';
+        label = 'PPTX 組み立て中...';
         icon = <span className="inline-block animate-spin text-base leading-none">⏳</span>;
         disabled = true;
       } else {
@@ -197,59 +187,14 @@ function WorkflowFooter({
   );
 }
 
-/** Progress banner shown during image-editable bbox extraction (~2-3 min). */
-function BboxProgressBanner({
-  phase,
-  elapsed,
-  estimatedTotal,
-  slideCount,
-}: {
-  phase: 'vision' | 'pptx';
-  elapsed: number;
-  estimatedTotal: number;
-  slideCount: number;
-}) {
-  const progressPct = Math.min(95, Math.round((elapsed / estimatedTotal) * 100));
-  const remaining = Math.max(0, estimatedTotal - elapsed);
-  const remainingLabel = remaining > 60
-    ? `残り約${Math.ceil(remaining / 60)}分`
-    : remaining > 5
-      ? `残り約${remaining}秒`
-      : '間もなく完了';
-
-  const phaseLabel = phase === 'vision'
-    ? `Vision AI がスライド画像を解析中（${slideCount}枚並列）`
-    : 'PPTX を組み立て中...';
-  const phaseDetail = phase === 'vision'
-    ? '各スライドの要素・座標・テキストを抽出しています'
-    : 'ネイティブ編集可能なテキストボックスを配置しています';
-
-  return (
-    <div
-      className="border-b px-4 py-3 text-xs"
-      style={{ background: 'var(--accent-light)', borderColor: 'var(--accent)', borderLeftWidth: 3 }}
-    >
-      <div className="mb-1.5 flex items-center justify-between">
-        <span className="font-semibold" style={{ color: 'var(--accent)' }}>{phaseLabel}</span>
-        <span style={{ color: 'var(--text-secondary)' }}>{elapsed}s 経過 · {remainingLabel}</span>
-      </div>
-      <div className="mb-1.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>{phaseDetail}</div>
-      {/* Progress bar */}
-      <div className="h-1 w-full overflow-hidden rounded-full" style={{ background: 'var(--border)' }}>
-        <div
-          className="h-full rounded-full transition-all duration-1000"
-          style={{ width: `${progressPct}%`, background: 'linear-gradient(90deg, var(--accent), #5C2D91)' }}
-        />
-      </div>
-    </div>
-  );
-}
+/** Progress banner shown for image-bleed PPTX assembly (unused; placeholder). */
+// (removed)
 
 interface SlidePanelProps {
   slideWork: SlideWork;
   /** Triggers the AI to generate pptxgenjs code (code mode). */
   onRequestGenerate?: () => void;
-  /** Image generation mode handlers (image-then-pptx mode). */
+  /** Image generation mode handlers (image-bleed mode). */
   onModeChange?: (mode: GenerationMode) => void;
   onGenerateImage?: (slideNumber: number) => void;
   onRegenerateImage?: (slideNumber: number) => void;
@@ -277,40 +222,7 @@ export function SlidePanel({
   const mode: GenerationMode = slideWork.generationMode ?? 'code';
   const [showCode, setShowCode] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [downloaded, setDownloaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [bboxPhase, setBboxPhase] = useState<'vision' | 'pptx' | null>(null);
-  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Estimated total seconds for bbox extraction (parallel across slides, ~130s typical)
-  const estimatedTotalSeconds = useMemo(() => Math.min(280, slides.length * 75 + 30), [slides.length]);
-
-  const startBboxTimer = () => {
-    setElapsedSeconds(0);
-    setBboxPhase('vision');
-    elapsedTimerRef.current = setInterval(() => {
-      setElapsedSeconds((s) => s + 1);
-    }, 1000);
-  };
-
-  const stopBboxTimer = () => {
-    if (elapsedTimerRef.current) {
-      clearInterval(elapsedTimerRef.current);
-      elapsedTimerRef.current = null;
-    }
-    setBboxPhase(null);
-  };
-
-  // Switch phase label to 'pptx' when most of the estimated time has passed
-  useEffect(() => {
-    if (bboxPhase === 'vision' && elapsedSeconds >= estimatedTotalSeconds * 0.85) {
-      setBboxPhase('pptx');
-    }
-  }, [elapsedSeconds, bboxPhase, estimatedTotalSeconds]);
-
-  // Cleanup timer on unmount
-  useEffect(() => () => stopBboxTimer(), []);
 
   const imagesReady = useMemo(
     () => slides.length > 0 && slides.every((s) => s.imageStatus === 'ready' && Boolean(s.imageUrl)),
@@ -320,12 +232,8 @@ export function SlidePanel({
     () => slides.some((s) => s.imageStatus === 'generating'),
     [slides],
   );
-  const hasIdleOrErrorImage = useMemo(
-    () => slides.some((s) => !s.imageStatus || s.imageStatus === 'idle' || s.imageStatus === 'error'),
-    [slides],
-  );
 
-  const isImageMode = mode === 'image-bleed' || mode === 'image-editable';
+  const isImageMode = mode === 'image-bleed';
 
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -354,7 +262,6 @@ export function SlidePanel({
       }
       const blob = await response.blob();
       downloadBlob(blob, `${pptx.title || 'presentation'}.pptx`);
-      setDownloaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unknown error');
     } finally {
@@ -407,76 +314,15 @@ export function SlidePanel({
         }
         throw new Error(err.error || `Failed: ${response.status}`);
       }
-      const fallback = response.headers.get('x-pptx-fallback');
+      const missing = response.headers.get('x-pptx-missing-images');
       const blob = await response.blob();
       downloadBlob(blob, `${title}.pptx`);
-      setDownloaded(true);
-      if (fallback) {
-        setError(`一部スライドで簡易レイアウトを使用しました (${fallback})`);
+      if (missing) {
+        setError(`画像が一部見つかりませんでした (slides: ${missing})。再生成してください。`);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unknown error');
     } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleImageEditablePptx = async () => {
-    if (!imagesReady) return;
-    setIsGenerating(true);
-    setError(null);
-    startBboxTimer();
-    try {
-      const imageIds = slides
-        .filter((s) => s.imageStatus === 'ready' && s.imageUrl)
-        .map((s) => {
-          const url = s.imageUrl ?? '';
-          const imageId = url.split('/').filter(Boolean).pop() ?? '';
-          return { slideNumber: s.number, imageId };
-        })
-        .filter((entry) => entry.imageId.length > 0);
-
-      const scenario = slides.map((s) => ({
-        number: s.number,
-        title: s.title,
-        keyMessage: s.keyMessage,
-        layout: s.layout,
-        bullets: s.bullets,
-        notes: s.notes,
-        icon: s.icon ?? undefined,
-        bodyMarkdown: s.bodyMarkdown ?? undefined,
-      }));
-
-      const title = pptx?.title || (slides[0]?.title ?? 'presentation');
-      const response = await fetch('/api/skills/pptx', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          generationMode: 'image-editable',
-          imageIds,
-          scenario,
-          title,
-        }),
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Unknown error' }));
-        if (response.status === 410) {
-          onClearAllImages?.();
-          throw new Error('画像キャッシュが期限切れです。「画像を生成」ボタンでもう一度生成してください。');
-        }
-        throw new Error(err.error || `Failed: ${response.status}`);
-      }
-      const fallbackCount = response.headers.get('x-pptx-fallback-count');
-      const blob = await response.blob();
-      downloadBlob(blob, `${title}.pptx`);
-      setDownloaded(true);
-      if (fallbackCount && Number(fallbackCount) > 0) {
-        setError(`${fallbackCount}枚のスライドで簡易レイアウトを使用しました（bbox 抽出失敗）`);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      stopBboxTimer();
       setIsGenerating(false);
     }
   };
@@ -563,18 +409,8 @@ export function SlidePanel({
         </div>
       )}
 
-      {/* bbox extraction progress banner */}
-      {bboxPhase && (
-        <BboxProgressBanner
-          phase={bboxPhase}
-          elapsed={elapsedSeconds}
-          estimatedTotal={estimatedTotalSeconds}
-          slideCount={slides.length}
-        />
-      )}
-
-      {/* Image generating status — simplified (no idle case, handled by footer) */}
-      {isImageMode && !bboxPhase && anyImageGenerating && (
+      {/* Image generating status */}
+      {isImageMode && anyImageGenerating && (
         <div
           className="border-b px-4 py-2 text-xs flex items-center gap-2"
           style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
@@ -583,7 +419,7 @@ export function SlidePanel({
           <span>画像を生成しています。完了したスライドから順次プレビューに表示されます...</span>
         </div>
       )}
-      {isImageMode && !bboxPhase && imagesReady && (
+      {isImageMode && imagesReady && (
         <div
           className="border-b px-4 py-2 text-xs flex items-center gap-2"
           style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border)' }}
@@ -707,12 +543,10 @@ export function SlidePanel({
           anyImageGenerating={anyImageGenerating}
           isGenerating={isGenerating}
           isStreaming={isStreaming}
-          elapsedSeconds={elapsedSeconds}
-          bboxPhase={bboxPhase}
           onCodeGenerate={onRequestGenerate}
           onCodeDownload={handleCodeDownload}
           onImageGenerate={onGenerateAllImages}
-          onImagePptx={mode === 'image-editable' ? handleImageEditablePptx : handleImageModePptx}
+          onImagePptx={handleImageModePptx}
         />
       )}
     </div>
@@ -730,7 +564,7 @@ interface SlideCardProps {
 
 function SlideCard({ slide, mode, isStreaming, onGenerateImage, onRegenerateImage, onUpdateSlideBody }: SlideCardProps) {
   const isGenerating = slide.imageStatus === 'generating';
-  const showImageMode = mode === 'image-bleed' || mode === 'image-editable';
+  const showImageMode = mode === 'image-bleed';
 
   return (
     <div
@@ -791,7 +625,6 @@ function SlideCard({ slide, mode, isStreaming, onGenerateImage, onRegenerateImag
               onGenerate={onGenerateImage ?? (() => undefined)}
               onRegenerate={onRegenerateImage ?? (() => undefined)}
               disabled={isStreaming}
-              showEditableBadge={mode === 'image-editable'}
             />
             {onUpdateSlideBody && onRegenerateImage && (
               <SlideBodyEditor

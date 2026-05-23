@@ -14,11 +14,9 @@ interface SlideImageCardProps {
   onGenerate: (slideNumber: number) => void;
   onRegenerate: (slideNumber: number) => void;
   disabled?: boolean;
-  /** Show 'bbox 編集可能' badge when mode is image-editable */
-  showEditableBadge?: boolean;
 }
 
-export function SlideImageCard({ slide, onGenerate, onRegenerate, disabled = false, showEditableBadge = false }: SlideImageCardProps) {
+export function SlideImageCard({ slide, onGenerate, onRegenerate, disabled = false }: SlideImageCardProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const status = slide.imageStatus ?? 'idle';
   const hasImage = Boolean(slide.imageUrl);
@@ -43,15 +41,6 @@ export function SlideImageCard({ slide, onGenerate, onRegenerate, disabled = fal
           style={{ color: 'var(--text-secondary)' }}
         >
           スライド画像
-          {showEditableBadge && status === 'ready' && (
-            <span
-              className="ml-1.5 rounded px-1 py-0.5 text-[9px] font-bold tracking-normal"
-              style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}
-              title="bbox 抽出で編集可能 PPTX を生成します"
-            >
-              ✦ 編集可能
-            </span>
-          )}
         </span>
         {status === 'ready' && hasImage && (
           <button
