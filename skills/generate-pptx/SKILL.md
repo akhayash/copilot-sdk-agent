@@ -16,7 +16,7 @@ JSON ではなく JavaScript コードを出力することで、カードレイ
 PPTX 生成パイプラインは 2 つのモードを持ちます：
 
 - **`code` モード**（このスキル）: Markdown → PptxGenJS コード を直接生成して `/api/skills/pptx` で実行する。完全に編集可能な PPTX を出力する。`LAYOUT_WIDE`（13.33 × 7.5 inches）を使用。
-- **`image-then-pptx` モード**: スライド画像 → bbox 抽出 → PPTX 再構築 のパイプライン。詳細は `skills/pptx-from-image/SKILL.md` を参照。16:9（10 × 5.625 inches）を使用し、bbox 抽出が失敗したスライドは Hybrid C フォールバック（背景画像 + シナリオ本文オーバーレイ）で復元される。レスポンスヘッダ `x-pptx-fallback` で部分／全面フォールバックを通知する。
+- **`image-bleed` モード**: 生成済みスライド画像をスライド全体（フルブリード、16:9 = 10 × 5.625 inches）にそのまま貼り付ける。画像が欠落している場合は当該スライドのみフォールバック描画（タイトル+本文パネル）。レスポンスヘッダ `x-pptx-fallback` / `x-pptx-missing-images` で通知する。
 
 ## 出力フォーマット
 

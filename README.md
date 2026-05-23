@@ -59,41 +59,29 @@ http://localhost:3000 を開いてプレゼン作成を依頼してください�
 | `MODEL_NAME` | - | モデル指定（e.g., `claude-opus-4.6`） |
 | `MODEL_PROVIDER` | - | `azure` で Azure OpenAI 使用 |
 | `AZURE_OPENAI_ENDPOINT` | - | Azure BYOM エンドポイント |
-| `AZURE_IMAGE_ENDPOINT` | - | image-then-pptx モード有効化。Azure Foundry の gpt-image-2 エンドポイント（未設定でモード自動 disable） |
+| `AZURE_IMAGE_ENDPOINT` | - | image-bleed モード有効化。Azure Foundry の gpt-image-2 エンドポイント（未設定でモード自動 disable） |
 | `AZURE_IMAGE_DEPLOYMENT` | - | gpt-image-2 のデプロイ名（既定: `gpt-image-2`） |
 | `AZURE_IMAGE_API_VERSION` | - | 画像 API バージョン（既定: `2025-04-01-preview`） |
 | `IMAGE_AUTH_MODE` | - | `entra` (managed identity / 既定) または `key`（`AZURE_IMAGE_API_KEY` 必須） |
 | `AZURE_IMAGE_API_KEY` | - | `IMAGE_AUTH_MODE=key` のときの API キー |
-| `BBOX_VISION_MODEL` | - | bbox 抽出に使う Vision モデル（既定: `gpt-4o`、Copilot SDK 経由） |
-| `BBOX_VISION_CONCURRENCY` | - | bbox 抽出の並列度（既定: `3`） |
-| `LIBREOFFICE_CONCURRENCY` | - | 品質ゲートの soffice 並列度（既定: `1`、2 GiB メモリの安全側） |
 
-## Image-then-PPTX Mode
+## PPTX Generation Modes
 
 PPTX 生成には 2 つのモードがある：
 
 | モード | 概要 | 必要環境 |
 |--------|------|----------|
 | `code`（既定） | AI が pptxgenjs コードを直接生成 → PPTX 化 | `GITHUB_TOKEN` のみ |
-| `image-then-pptx` | gpt-image-2 で各スライド画像を生成 → Vision モデルで bbox 抽出 → pptxgenjs で再構築 | `AZURE_IMAGE_ENDPOINT` + 画像 deploy + Vision モデル |
+| `image-bleed` | gpt-image-2 で各スライド画像を生成 → 16:9 スライドにフルブリードで貼り付け | `AZURE_IMAGE_ENDPOINT` + 画像 deploy |
 
-**ワークフロー（image-then-pptx）**:
+**ワークフロー（image-bleed）**:
 
 1. ユーザーが依頼 → AI が `set_scenario` でシナリオを右パネルに送信
-2. UI トグルで `image-then-pptx` に切替 → 「全画像生成」ボタンで各スライドの画像を Azure Foundry に生成依頼
+2. UI トグルで `image-bleed` に切替 → 「全画像生成」ボタンで各スライドの画像を Azure Foundry に生成依頼
 3. ユーザーが画像をレビュー（個別再生成・bodyMarkdown 編集による再生成も可）
-4. 「PPTX を生成」→ bbox 抽出 → レイアウト再構築 → PPTX ダウンロード
-5. ダウンロード完了後、非同期で品質バッジ（pass/warn/fail）が表示される（LibreOffice + pixelmatch + pHash 比較）
+4. 「PPTX を生成」→ 各スライドに画像をフルブリード貼り付け → PPTX ダウンロード
 
-画像モードの PPTX は、Azure 画像モデルが返した画像のアスペクト比に合わせてカスタムスライドサイズを定義する。`gpt-image-2` の横長出力は 1536×1024（3:2）なので、16:9 固定にすると bbox と文字サイズが崩れるため。
-
-**ランタイム依存**:
-
-- Docker イメージに `azure-cli` + `libreoffice-impress` + `poppler-utils` + `fonts-noto-cjk` が同梱されている必要がある。`pnpm dev` でローカル動作させる場合はホストに `soffice` と `pdftoppm` がインストールされていること。
-- ローカル Docker で `IMAGE_AUTH_MODE=entra` を使う場合、`docker-compose.yml` は `${USERPROFILE}/.azure-docker` を `/azure` にマウントし、`AZURE_CONFIG_DIR=/azure` を設定する。初回だけ `docker exec -it copilot-sdk-agent-local az login --use-device-code` を実行すれば、以後の rebuild/recreate では同じ Linux 用 Azure CLI キャッシュを再利用できる。
-- Container Apps のメモリは **最低 2 GiB** が必要（LibreOffice ピーク 200–400 MB × 並行 + Node + sharp で 1.2–1.6 GiB）。
-- `minReplicas: 1` で cold start（soffice 初回起動 5–10 秒）を回避する。
-- フォールバック: bbox 抽出失敗時は Hybrid C（背景画像 + タイトル帯 + 半透明本文パネル）に降格して必ず PPTX を返す。レスポンスヘッダ `x-pptx-fallback: hybrid-c` または `hybrid-c-partial; slides=2,5` で通知される。
+**フォールバック**: 画像が一部欠落している場合は該当スライドのみタイトル+本文パネルで描画。レスポンスヘッダ `x-pptx-missing-images: 2,5` で通知される。全画像欠落時は 410 を返す。
 
 ## Commands
 

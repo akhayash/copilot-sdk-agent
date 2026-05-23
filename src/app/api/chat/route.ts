@@ -25,10 +25,10 @@ import type {
 import type { DesignBrief, SlideItem } from '@/domain/entities/slide-work';
 
 type ReasoningEffort = NonNullable<SessionConfig['reasoningEffort']>;
-type GenerationMode = 'code' | 'image-then-pptx' | 'image-bleed' | 'image-editable';
+type GenerationMode = 'code' | 'image-bleed';
 
 const VALID_REASONING_EFFORTS: readonly ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh'];
-const VALID_GENERATION_MODES: readonly GenerationMode[] = ['code', 'image-then-pptx', 'image-bleed', 'image-editable'];
+const VALID_GENERATION_MODES: readonly GenerationMode[] = ['code', 'image-bleed'];
 
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
   return typeof value === 'string' && VALID_REASONING_EFFORTS.includes(value as ReasoningEffort);
@@ -39,7 +39,7 @@ function isGenerationMode(value: unknown): value is GenerationMode {
 }
 
 function isImageMode(mode: GenerationMode): boolean {
-  return mode === 'image-then-pptx' || mode === 'image-bleed' || mode === 'image-editable';
+  return mode === 'image-bleed';
 }
 
 interface ImageAttachment {
@@ -160,17 +160,11 @@ export async function POST(req: NextRequest) {
           : undefined;
 
         try {
-          // Skill directories (SKILL.md based) — switch by generation mode
-          const skillDirs =
-            isImageMode(generationMode)
-              ? [
-                  path.resolve(process.cwd(), 'skills', 'create-slide-story'),
-                  path.resolve(process.cwd(), 'skills', 'pptx-from-image'),
-                ]
-              : [
-                  path.resolve(process.cwd(), 'skills', 'create-slide-story'),
-                  path.resolve(process.cwd(), 'skills', 'generate-pptx'),
-                ];
+          // Skill directories (SKILL.md based)
+          const skillDirs = [
+            path.resolve(process.cwd(), 'skills', 'create-slide-story'),
+            path.resolve(process.cwd(), 'skills', 'generate-pptx'),
+          ];
 
           const baseSystemLines = [
             'You are a helpful AI assistant specialized in creating presentations. Always respond in the same language as the user.',
@@ -191,13 +185,13 @@ export async function POST(req: NextRequest) {
             isImageMode(generationMode)
               ? [
                   imageEnabled
-                    ? 'MODE: image-then-pptx. After set_scenario, call generate_all_images to produce illustrations for every slide, then wait for the user to approve before emitting pptxgenjs code.'
-                    : 'MODE: image-then-pptx, but image generation is NOT configured on this deployment (AZURE_IMAGE_ENDPOINT is unset). Tell the user image generation is disabled and fall back to the standard code-only flow.',
+                    ? 'MODE: image-bleed. After set_scenario, call generate_all_images to produce one illustration per slide. The PPTX skill will paste each image full-bleed on its slide (non-editable). Wait for the user to approve before triggering generation.'
+                    : 'MODE: image-bleed, but image generation is NOT configured on this deployment (AZURE_IMAGE_ENDPOINT is unset). Tell the user image generation is disabled and fall back to the standard code-only flow.',
                   imageEnabled
-                    ? 'CRITICAL for image-then-pptx mode: every content slide in set_scenario MUST include a SUBSTANTIAL `bodyMarkdown` of 600-1200 Japanese characters (350-700 English words) per slide, organized into 3-5 paragraphs with concrete numbers, proper nouns, years, sources, and before/after contrasts. Bullets alone — or short 200-300 char bodies — produce generic stock-image results because gpt-image-2 has nothing concrete to compose. Treat bodyMarkdown as a research briefing that gpt-image-2 will read to design the slide. Only title/section divider slides may omit bodyMarkdown.'
+                    ? 'CRITICAL for image-bleed mode: every content slide in set_scenario MUST include a SUBSTANTIAL `bodyMarkdown` of 600-1200 Japanese characters (350-700 English words) per slide, organized into 3-5 paragraphs with concrete numbers, proper nouns, years, sources, and before/after contrasts. Bullets alone — or short 200-300 char bodies — produce generic stock-image results because gpt-image-2 has nothing concrete to compose. Treat bodyMarkdown as a research briefing that gpt-image-2 will read to design the slide. Only title/section divider slides may omit bodyMarkdown.'
                     : '',
                   imageEnabled
-                    ? 'When you call update_slide in image-then-pptx mode, ALSO call generate_slide_image for that same slideNumber in the same turn so the illustration stays in sync with the updated content. Always include bodyMarkdown on update_slide as well.'
+                    ? 'When you call update_slide in image-bleed mode, ALSO call generate_slide_image for that same slideNumber in the same turn so the illustration stays in sync with the updated content. Always include bodyMarkdown on update_slide as well.'
                     : '',
                 ].filter((s) => s.length > 0)
               : [];

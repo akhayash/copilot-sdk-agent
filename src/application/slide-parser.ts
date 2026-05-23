@@ -78,7 +78,7 @@ export function parseStoryToSlides(storyContent: string): SlideItem[] {
       code: null,
       accent: ACCENT_CYCLE[(pos.number - 1) % ACCENT_CYCLE.length],
       // Preserve the raw body markdown (paragraphs + bullets) so downstream
-      // image generation in image-then-pptx mode can use refined story content
+      // image generation in image-bleed mode can use refined story content
       // even when the AI emits markdown via the fallback parser path.
       bodyMarkdown: body || null,
     };

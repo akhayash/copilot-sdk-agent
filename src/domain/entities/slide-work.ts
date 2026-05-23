@@ -53,8 +53,6 @@ export interface SlideItem {
   imagePrompt?: string | null;
   /** Per-slide image generation status */
   imageStatus?: 'idle' | 'generating' | 'ready' | 'error';
-  /** bbox-extraction status (image-editable mode only) */
-  layoutStatus?: 'idle' | 'extracting' | 'ready' | 'fallback' | 'error';
 }
 
 export type SlidePhase = 'empty' | 'planning' | 'story' | 'imagining' | 'generating' | 'ready';
@@ -74,7 +72,6 @@ export interface SlideWork {
    * Generation mode. Default 'code'.
    * - 'code': AI generates pptxgenjs code, executed server-side.
    * - 'image-bleed': generated images placed full-bleed on each slide.
-   * - 'image-editable': vision LLM extracts bbox layout → native editable PPTX.
    */
-  generationMode?: 'code' | 'image-bleed' | 'image-editable';
+  generationMode?: 'code' | 'image-bleed';
 }

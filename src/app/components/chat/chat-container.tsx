@@ -60,7 +60,6 @@ function toSlideItem(s: ScenarioSlidePayload, previous?: SlideItem): SlideItem {
     imageUrl: previous?.imageUrl ?? null,
     imagePrompt: previous?.imagePrompt ?? null,
     imageStatus: previous?.imageStatus ?? 'idle',
-    layoutStatus: previous?.layoutStatus ?? 'idle',
   };
 }
 
