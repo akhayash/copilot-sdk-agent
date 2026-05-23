@@ -1,0 +1,43 @@
+# Local Docker validation — reproduces the production container image locally.
+# Usage:
+#   docker compose up --build          # build & start
+#   docker compose up --build -d       # detached
+#   docker compose down                # stop & remove
+#
+# Environment: reads .env.local automatically (see env_file below).
+# The container uses the same Dockerfile as CI/CD so LibreOffice, pdftoppm,
+# and Noto fonts are present, and you can call /api/test/pipeline to verify
+# the full image→bbox→pptx→render→compare pipeline before deploying.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: copilot-sdk-agent:local
+    container_name: copilot-sdk-agent-local
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - AZURE_CONFIG_DIR=/azure
+    volumes:
+      # Persist a Linux Azure CLI login cache for local Docker validation.
+      # Run once after container start:
+      #   docker exec -it copilot-sdk-agent-local az login --use-device-code
+      - type: bind
+        source: ${USERPROFILE}/.azure-docker
+        target: /azure
+    # LibreOffice writes runtime profiles to /tmp per-PID; give it enough room.
+    tmpfs:
+      - /tmp:size=512m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s

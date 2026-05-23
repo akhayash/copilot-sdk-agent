@@ -196,62 +196,198 @@ async function handleImageEditablePptx(body: PptxCodeRequest): Promise<NextRespo
     );
   }
 
-  const pres = new PptxGenJS();
   // 16:9 inches — must match applyLayoutToSlide expectations
   const SW = 10;
   const SH = 5.625;
-  let fallbackCount = 0;
 
-  // Parallel bbox extraction with per-slide timeout.
-  // Vision LLM inference can take 90-200 s per slide in practice.
+  // Phase 1: Parallel bbox extraction.
+  // Results are collected first so slides can be added in strict order in Phase 2.
   const BBOX_TIMEOUT_MS = 300_000;
-  await Promise.all(
-    slideEntries.map(async (entry) => {
-      if (!entry.image) {
-        // Cache miss — full-bleed fallback
-        const slide = pres.addSlide();
-        slide.background = { color: 'FFFFFF' };
-        slide.addText(
-          entry.scenario?.title ?? `Slide ${entry.slideNumber}`,
-          { x: 0.5, y: SH / 2 - 0.3, w: SW - 1, h: 0.6, fontSize: 24, bold: true, color: '1B1B1B', align: 'center' },
-        );
-        fallbackCount++;
-        return;
-      }
+  type SlideResult =
+    | { kind: 'layout'; layout: Awaited<ReturnType<typeof extractLayout>> }
+    | { kind: 'fallback' };
 
+  const results: SlideResult[] = await Promise.all(
+    slideEntries.map(async (entry): Promise<SlideResult> => {
+      if (!entry.image) return { kind: 'fallback' };
       try {
         const layout = await extractLayout(entry.image, {
           slideNumber: entry.slideNumber,
           timeoutMs: BBOX_TIMEOUT_MS,
         });
-        await applyLayoutToSlide(pres, layout, entry.image);
+        return { kind: 'layout', layout };
       } catch (err) {
         console.warn(
           `[pptx] bbox extraction failed for slide ${entry.slideNumber} — using full-bleed fallback:`,
           err instanceof Error ? err.message : String(err),
         );
-        // Full-bleed fallback (Hybrid C)
-        const slide = pres.addSlide();
-        const dataUri = `data:image/png;base64,${entry.image.toString('base64')}`;
-        slide.addImage({ data: dataUri, x: 0, y: 0, w: SW, h: SH });
-        fallbackCount++;
-      }
-
-      // Attach speaker notes regardless of mode
-      const notes = entry.scenario?.notes?.trim();
-      if (notes) {
-        // pptxgenjs exposes slides array at runtime but not in typings
-        const slides = (pres as unknown as { slides: Array<{ addNotes: (n: string) => void }> }).slides;
-        const lastSlide = slides[slides.length - 1];
-        if (lastSlide) lastSlide.addNotes(notes);
+        return { kind: 'fallback' };
       }
     }),
   );
 
-  const pptxBuffer = (await pres.write({ outputType: 'arraybuffer' })) as ArrayBuffer;
+  // Phase 2: Add slides in strict order (critical — Promise.all does NOT guarantee addSlide() call order).
+  const pres = new PptxGenJS();
+  let fallbackCount = 0;
+
+  for (let i = 0; i < slideEntries.length; i++) {
+    const entry = slideEntries[i];
+    const result = results[i];
+
+    if (result.kind === 'layout' && entry.image) {
+      await applyLayoutToSlide(pres, result.layout, entry.image);
+    } else {
+      const slide = pres.addSlide();
+      if (entry.image) {
+        const dataUri = `data:image/png;base64,${entry.image.toString('base64')}`;
+        slide.addImage({ data: dataUri, x: 0, y: 0, w: SW, h: SH });
+      } else {
+        slide.background = { color: 'FFFFFF' };
+        slide.addText(
+          entry.scenario?.title ?? `Slide ${entry.slideNumber}`,
+          { x: 0.5, y: SH / 2 - 0.3, w: SW - 1, h: 0.6, fontSize: 24, bold: true, color: '1B1B1B', align: 'center' },
+        );
+      }
+      fallbackCount++;
+    }
+
+    // Attach speaker notes regardless of mode
+    const notes = entry.scenario?.notes?.trim();
+    if (notes) {
+      const slides = (pres as unknown as { slides: Array<{ addNotes: (n: string) => void }> }).slides;
+      const lastSlide = slides[slides.length - 1];
+      if (lastSlide) lastSlide.addNotes(notes);
+    }
+  }
+
+  let pptxBuffer = (await pres.write({ outputType: 'arraybuffer' })) as ArrayBuffer;
+  let currentFallbackCount = fallbackCount;
+
+  // Phase 3: Inline refinement loop.
+  // Render the initial PPTX with LibreOffice, compare each slide against the source
+  // image, and re-extract the layout for any "fail" slides. If refinements improve
+  // coverage the PPTX is rebuilt before being returned. LibreOffice absence is
+  // caught and skipped gracefully.
+  const REFINEMENT_JOB_ID = randomUUID();
+  const REFINEMENT_RENDER_TIMEOUT_MS = 90_000;
+  try {
+    const rendered = await renderPptxToPngs(Buffer.from(pptxBuffer), {
+      jobId: REFINEMENT_JOB_ID,
+      dpi: 96,
+      timeoutMs: REFINEMENT_RENDER_TIMEOUT_MS,
+    });
+
+    // Write original images to temp files so compareImages can read both as paths.
+    const origTmpFiles = new Map<number, string>();
+    try {
+      await Promise.all(
+        slideEntries.map(async (entry, i) => {
+          if (!entry.image) return;
+          const p = path.join(tmpdir(), `orig-${REFINEMENT_JOB_ID}-${i}.png`);
+          await fs.writeFile(p, entry.image);
+          origTmpFiles.set(i, p);
+        }),
+      );
+
+      // Compare each slide (layout-extracted only) and record fail verdicts.
+      const failHints = new Map<number, string>(); // slideEntries index → diff hint
+      await Promise.all(
+        slideEntries.map(async (entry, i) => {
+          if (results[i].kind !== 'layout' || !entry.image) return;
+          const origPath = origTmpFiles.get(i);
+          const renderedSlide = rendered.find((r) => r.slideNumber === i + 1);
+          if (!origPath || !renderedSlide) return;
+          try {
+            const metrics = await compareImages(origPath, renderedSlide.pngPath);
+            if (evaluateQuality(metrics) === 'fail') {
+              failHints.set(
+                i,
+                `diff=${(metrics.diffPixelRatio * 100).toFixed(1)}%, phash=${metrics.phashDistance}`,
+              );
+            }
+          } catch {
+            // individual compare errors are non-fatal
+          }
+        }),
+      );
+
+      if (failHints.size > 0) {
+        console.log(`[pptx] refinement: re-extracting ${failHints.size}/${slideEntries.length} failed slides`);
+
+        // Re-extract failed slides in parallel with a refinement hint.
+        const refinedResults: SlideResult[] = await Promise.all(
+          results.map(async (result, i): Promise<SlideResult> => {
+            const hint = failHints.get(i);
+            if (!hint || !slideEntries[i].image) return result;
+            try {
+              const layout = await extractLayout(slideEntries[i].image!, {
+                slideNumber: slideEntries[i].slideNumber,
+                timeoutMs: 120_000,
+                refinementHint: hint,
+              });
+              return { kind: 'layout', layout };
+            } catch {
+              return result; // keep original on individual failure
+            }
+          }),
+        );
+
+        // Rebuild PPTX with mixed original/refined results.
+        const pres2 = new PptxGenJS();
+        let refinedFallbackCount = 0;
+        for (let i = 0; i < slideEntries.length; i++) {
+          const entry = slideEntries[i];
+          const result = refinedResults[i];
+          if (result.kind === 'layout' && entry.image) {
+            await applyLayoutToSlide(pres2, result.layout, entry.image);
+          } else {
+            const slide = pres2.addSlide();
+            if (entry.image) {
+              const dataUri = `data:image/png;base64,${entry.image.toString('base64')}`;
+              slide.addImage({ data: dataUri, x: 0, y: 0, w: SW, h: SH });
+            } else {
+              slide.background = { color: 'FFFFFF' };
+              slide.addText(
+                entry.scenario?.title ?? `Slide ${entry.slideNumber}`,
+                { x: 0.5, y: SH / 2 - 0.3, w: SW - 1, h: 0.6, fontSize: 24, bold: true, color: '1B1B1B', align: 'center' },
+              );
+            }
+            refinedFallbackCount++;
+          }
+          const notes = entry.scenario?.notes?.trim();
+          if (notes) {
+            const slides2 = (pres2 as unknown as { slides: Array<{ addNotes: (n: string) => void }> }).slides;
+            const lastSlide2 = slides2[slides2.length - 1];
+            if (lastSlide2) lastSlide2.addNotes(notes);
+          }
+        }
+        pptxBuffer = (await pres2.write({ outputType: 'arraybuffer' })) as ArrayBuffer;
+        currentFallbackCount = refinedFallbackCount;
+      }
+    } finally {
+      await Promise.all(
+        [...origTmpFiles.values()].map((p) => fs.unlink(p).catch(() => undefined)),
+      );
+    }
+  } catch (err) {
+    // LibreOffice unavailable or rendering error — skip refinement.
+    console.warn(
+      '[pptx] refinement loop skipped:',
+      err instanceof Error ? err.message : String(err),
+    );
+  } finally {
+    await cleanupRenderJob(REFINEMENT_JOB_ID);
+  }
+
   const headers: Record<string, string> = {
-    'x-pptx-fallback-count': String(fallbackCount),
+    'x-pptx-fallback-count': String(currentFallbackCount),
   };
+
+  // Quality gate — fire-and-forget, must not block the response
+  const jobId = randomUUID();
+  kickOffQualityCheck(jobId, pptxBuffer, slideEntries);
+  headers['x-pptx-job-id'] = jobId;
+
   return pptxResponse(pptxBuffer, body.title, headers);
 }
 

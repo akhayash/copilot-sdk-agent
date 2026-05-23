@@ -51,6 +51,11 @@ export interface ExtractLayoutOptions {
   slideNumber: number;
   signal?: AbortSignal;
   timeoutMs?: number;
+  /**
+   * Optional hint from a previous extraction round (e.g. "diff=32%, phash=18").
+   * Injected into the first-call prompt to guide the model toward more accurate extraction.
+   */
+  refinementHint?: string;
 }
 
 /** Concurrency hint for callers wiring up p-queue. */
@@ -60,30 +65,64 @@ export function getBboxConcurrency(): number {
 }
 
 const SYSTEM_PROMPT = [
-  "You are a layout extractor for slide images.",
-  "Analyze the attached slide image and return a JSON object that strictly matches this schema:",
+  "You are a precision slide-layout extractor.",
+  "Analyze the attached slide image and return a single JSON object that strictly matches the schema below.",
+  "",
+  "=== OUTPUT SCHEMA ===",
   "{",
-  '  "slideNumber": <int>,',
+  '  "slideNumber": <integer>,',
+  '  "slideBackground": "#RRGGBB",  // REQUIRED if the slide has a solid background color',
   '  "elements": [',
-  '    { "id": "<unique>", "type": "textbox", "bbox": [x,y,w,h], "z": 1|2|3|4, "text": "...", "fontSize": <number>, "bold": <bool?>, "align": "left"|"center"|"right"?, "color": "#RRGGBB"? },',
-  '    { "id": "<unique>", "type": "auto_shape", "shape": "RECTANGLE", "bbox": [x,y,w,h], "z": 1|2|3|4, "fill": "#RRGGBB"?, "line": { "color": "#RRGGBB", "width": <number> }? },',
-  '    { "id": "<unique>", "type": "line", "bbox": [x,y,w,h], "z": 1|2|3|4, "line": { "color": "#RRGGBB", "width": <number> } },',
-  '    { "id": "<unique>", "type": "picture", "bbox": [x,y,w,h], "z": 1|2|3|4, "sourceCrop": [x,y,w,h] }',
+  '    // textbox:',
+  '    { "id": "t1", "type": "textbox", "bbox": [x,y,w,h], "z": 3,',
+  '      "text": "exact text", "fontSize": <pt>, "bold": <bool>, "italic": <bool>,',
+  '      "align": "left"|"center"|"right", "valign": "top"|"middle"|"bottom",',
+  '      "fontFace": "Meiryo UI",  // use "Meiryo UI" for Japanese, "Calibri" for Latin',
+  '      "color": "#RRGGBB" },',
+  '    // auto_shape (non-background rectangles only):',
+  '    { "id": "s1", "type": "auto_shape", "shape": "RECTANGLE", "bbox": [x,y,w,h], "z": 2,',
+  '      "fill": "#RRGGBB", "line": { "color": "#RRGGBB", "width": <pt> } },',
+  '    // line:',
+  '    { "id": "l1", "type": "line", "bbox": [x,y,w,h], "z": 2,',
+  '      "line": { "color": "#RRGGBB", "width": <pt> } },',
+  '    // picture (photos/icons/charts only, NOT background):',
+  '    { "id": "p1", "type": "picture", "bbox": [x,y,w,h], "z": 1, "sourceCrop": [x,y,w,h] }',
   "  ]",
   "}",
   "",
-  "Constraints:",
-  "- All bbox values are slide-relative in 0.0..1.0 (NOT pixels, NOT EMU).",
-  "- z-order: 1=background picture, 2=shapes/borders, 3=textboxes, 4=top-level highlights.",
-  '- ALL readable text on the slide MUST be represented as separate "textbox" elements. NEVER return a single full-slide picture with no textboxes.',
-  "- ids must be unique within the slide.",
-  '- Hex colors include the leading "#".',
-  "- CRITICAL: Do NOT create a 'picture' element for a plain solid or gradient background. If the background is a solid color, represent it as an auto_shape with fill, or omit it entirely. Use 'picture' ONLY for actual content images (charts, photos, icons) that are NOT the background layer.",
-  "- CRITICAL: For each textbox bbox, add 5% extra width and 10% extra height beyond the visible text region to prevent font-metric clipping in PowerPoint. Example: if text visually spans x=0.05..0.45, set bbox x=0.03, w=0.44.",
-  '- CRITICAL: Do NOT split a single logical text run into multiple textbox elements. If a heading reads "Foo Bar", return ONE textbox with text="Foo Bar", not two.',
-  "- If text appears in two columns, create one textbox per column — never split a column's text into multiple boxes.",
+  "=== BBOX RULES ===",
+  "- Coordinates are slide-relative fractions 0.0..1.0 (top-left origin). NOT pixels.",
+  "- [x, y, w, h] = left edge, top edge, width, height.",
+  "- For textboxes: extend bbox by +5% width and +15% height beyond the visible glyph boundary to prevent PowerPoint clipping.",
+  "  Example: visible text x=0.05..0.45 → set bbox [0.03, y-0.01, 0.44, h+0.03].",
+  "- z-order: 1=deep background, 2=shapes/dividers, 3=main text, 4=overlay highlights.",
   "",
-  "Output ONLY the JSON object, no markdown fences, no commentary.",
+  "=== BACKGROUND RULE ===",
+  '- If the slide has a solid background color, set "slideBackground": "#RRGGBB" at the top level.',
+  '- Do NOT create an auto_shape that covers the entire slide (bbox ≈ [0,0,1,1]) just for the background color. Use "slideBackground" instead.',
+  '- Use auto_shape ONLY for non-background decorative rectangles (header bands, cards, dividers, etc.).',
+  "",
+  "=== TEXT EXTRACTION RULES ===",
+  "- Extract ALL visible text — headings, body, labels, footnotes, page numbers.",
+  '- Japanese text: transcribe exactly character by character. Use fontFace "Meiryo UI".',
+  '- Latin/English text: use fontFace "Calibri" unless a clearly different font is visible.',
+  "- ONE textbox per logical text block (heading, paragraph, bullet list). Never split a single line into multiple textboxes.",
+  "- Bullet lists: concatenate all bullets into a single textbox with newline (\\n) between items.",
+  "- fontSize: estimate in points. Heading ≈ 24-36pt, subheading ≈ 18-24pt, body ≈ 12-18pt, footnote ≈ 8-11pt.",
+  "- valign: 'top' for headers/body, 'middle' for centered labels inside shapes.",
+  "",
+  "=== PICTURE RULE ===",
+  '- Only use type "picture" for photographic content, charts, icons, or illustrations embedded in the slide.',
+  '- CRITICAL: sourceCrop is the region to cut from THIS SAME source image (the slide image you are analyzing).',
+  '  The source image is the entire slide. Therefore, for an icon or image at position [px,py,pw,ph] on the slide,',
+  '  set sourceCrop = [px, py, pw, ph] (identical to bbox). Do NOT use [0,0,1,1] unless the picture fills the entire slide.',
+  '  Example: icon visible at x=0.05..0.13, y=0.10..0.20 → bbox=[0.05,0.10,0.08,0.10], sourceCrop=[0.05,0.10,0.08,0.10].',
+  '- If the entire slide IS an image (no overlaid text), represent the image as a full-bleed picture: bbox=[0,0,1,1], sourceCrop=[0,0,1,1].',
+  "",
+  "=== STRICT FORMAT ===",
+  "- Return ONLY the raw JSON object. No markdown fences, no explanation, no trailing text.",
+  '- All hex colors include the leading "#" and are exactly 7 characters: #RRGGBB.',
+  "- All IDs must be unique strings within the slide.",
 ].join("\n");
 
 /**
@@ -109,10 +148,11 @@ async function runVisionOnce(args: {
   imagePath: string;
   slideNumber: number;
   retryHint?: string;
+  refinementHint?: string;
   timeoutMs: number;
   signal?: AbortSignal;
 }): Promise<string> {
-  const { imagePath, slideNumber, retryHint, timeoutMs, signal } = args;
+  const { imagePath, slideNumber, retryHint, refinementHint, timeoutMs, signal } = args;
 
   // Normalize imagePath once so the permission check is OS-agnostic.
   // On Windows, tmpdir() uses backslashes but the CLI may send forward slashes.
@@ -156,7 +196,9 @@ async function runVisionOnce(args: {
 
   const prompt = retryHint
     ? `Slide ${slideNumber}. Previous output failed schema validation: ${retryHint}. Return ONLY a valid JSON object per the schema, no commentary.`
-    : `Extract the layout JSON for slide ${slideNumber}.`;
+    : refinementHint
+      ? `Slide ${slideNumber}. REFINEMENT: A previous extraction of this slide had poor visual fidelity (${refinementHint}). Re-analyze the image carefully: ensure all text is captured verbatim, bbox coordinates precisely wrap visible elements, and no elements are missed. Return ONLY a valid JSON object.`
+      : `Extract the layout JSON for slide ${slideNumber}.`;
 
   // Combine caller signal with our own timeout
   const ac = new AbortController();
@@ -223,10 +265,11 @@ export async function extractLayout(
   await fs.writeFile(tmpFile, imageBuffer);
 
   try {
-    // First attempt
+    // First attempt (pass refinementHint if this is a re-extraction)
     const raw1 = await runVisionOnce({
       imagePath: tmpFile,
       slideNumber: opts.slideNumber,
+      refinementHint: opts.refinementHint,
       timeoutMs,
       signal: opts.signal,
     });
@@ -261,10 +304,116 @@ export async function extractLayout(
   }
 }
 
+/** Normalize hex color to #RRGGBB, or return raw string if unrecognized. */
+function normalizeColor(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed;
+  if (/^#[0-9a-fA-F]{8}$/.test(trimmed)) return trimmed.slice(0, 7);
+  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
+    return "#" + [...trimmed.slice(1)].map((c) => c + c).join("");
+  }
+  const rgb = trimmed.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i);
+  if (rgb) {
+    return (
+      "#" +
+      [rgb[1], rgb[2], rgb[3]]
+        .map((v) => parseInt(v).toString(16).padStart(2, "0"))
+        .join("")
+    );
+  }
+  return trimmed;
+}
+
+/** Clamp bbox values to [0,1] with positive w/h. */
+function clampBbox(bbox: unknown): unknown {
+  if (!Array.isArray(bbox) || bbox.length !== 4) return bbox;
+  let [x, y, w, h] = bbox as number[];
+  x = Math.max(0, Math.min(1, x));
+  y = Math.max(0, Math.min(1, y));
+  w = Math.max(0.001, Math.min(1 - x, w));
+  h = Math.max(0.001, Math.min(1 - y, h));
+  return [x, y, w, h];
+}
+
+/**
+ * Normalize LLM-produced layout JSON to fit strict schema constraints:
+ * - z-layer clamped to 1-4
+ * - hex colors normalized to #RRGGBB
+ * - bbox values clamped to [0,1]
+ * - picture.sourceCrop defaulted to full-image if missing
+ * - slideBackground normalized to #RRGGBB
+ * - valign/fontFace passed through if present
+ */
+function normalizeLayout(obj: unknown): unknown {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return obj;
+  const layout = obj as Record<string, unknown>;
+
+  // Normalize top-level slideBackground
+  if (typeof layout.slideBackground === "string") {
+    layout.slideBackground = normalizeColor(layout.slideBackground);
+  }
+
+  if (!Array.isArray(layout.elements)) return layout;
+
+  layout.elements = layout.elements.map((el: unknown) => {
+    if (!el || typeof el !== "object" || Array.isArray(el)) return el;
+    const e = { ...(el as Record<string, unknown>) };
+
+    if (typeof e.z === "number") {
+      e.z = Math.max(1, Math.min(4, Math.round(e.z)));
+    }
+    if (Array.isArray(e.bbox)) {
+      e.bbox = clampBbox(e.bbox);
+    }
+    for (const key of ["color", "fill"] as const) {
+      if (typeof e[key] === "string") {
+        e[key] = normalizeColor(e[key] as string);
+      }
+    }
+    if (e.line && typeof e.line === "object" && !Array.isArray(e.line)) {
+      const line = { ...(e.line as Record<string, unknown>) };
+      if (typeof line.color === "string") {
+        line.color = normalizeColor(line.color);
+      }
+      e.line = line;
+    }
+    if (e.type === "picture") {
+      const bboxVal = Array.isArray(e.bbox) ? (e.bbox as number[]) : null;
+      if (!Array.isArray(e.sourceCrop)) {
+        // Default sourceCrop to bbox: for icons/images placed on the slide,
+        // the region to cut from the source image equals the element's position.
+        e.sourceCrop = bboxVal ? [...bboxVal] : [0, 0, 1, 1];
+      } else {
+        e.sourceCrop = clampBbox(e.sourceCrop);
+      }
+    }
+    // Normalize valign to allowed values
+    if (typeof e.valign === "string" && !["top", "middle", "bottom"].includes(e.valign as string)) {
+      delete e.valign;
+    }
+    return e;
+  });
+
+  // Deduplicate element IDs: if LLM returns duplicate IDs, append suffix to keep schema valid.
+  const seenIds = new Set<string>();
+  layout.elements = (layout.elements as Array<Record<string, unknown>>).map((e) => {
+    const id = typeof e.id === "string" ? e.id : "";
+    if (seenIds.has(id)) {
+      let suffix = 2;
+      while (seenIds.has(`${id}_${suffix}`)) suffix++;
+      e.id = `${id}_${suffix}`;
+    }
+    seenIds.add(e.id as string);
+    return e;
+  });
+
+  return layout;
+}
+
 function safeJsonParse(raw: string): unknown {
   if (!raw) return null;
   try {
-    return JSON.parse(extractJsonObject(raw));
+    return normalizeLayout(JSON.parse(extractJsonObject(raw)));
   } catch {
     return null;
   }

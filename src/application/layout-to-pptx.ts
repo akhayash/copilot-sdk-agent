@@ -97,8 +97,44 @@ export async function applyLayoutToSlide(
   const slide = pres.addSlide();
   const dims = getSlideDims(pres);
 
+  // Apply slide background color if provided by the extractor.
+  if (layout.slideBackground) {
+    const bg = hex(layout.slideBackground);
+    if (bg) {
+      slide.background = { color: bg };
+    }
+  }
+
+  // Detect full-bleed background auto_shape (z=1, bbox≈[0,0,1,1], fill only)
+  // and promote them to slide.background instead of rendering as a shape.
+  // This avoids an opaque rectangle being selectable in PowerPoint.
+  // Threshold relaxed to 0.03 / 0.97 to account for minor LLM rounding.
+  const promoted = new Set<string>();
+  if (!layout.slideBackground) {
+    for (const el of layout.elements) {
+      if (
+        el.type === 'auto_shape' &&
+        el.z === 1 &&
+        el.fill &&
+        !el.line &&
+        el.bbox[0] <= 0.03 &&
+        el.bbox[1] <= 0.03 &&
+        el.bbox[2] >= 0.97 &&
+        el.bbox[3] >= 0.97
+      ) {
+        const bg = hex(el.fill);
+        if (bg) {
+          slide.background = { color: bg };
+          promoted.add(el.id);
+        }
+      }
+    }
+  }
+
   // Sort by z ascending so background is added first.
-  const ordered = [...layout.elements].sort((a, b) => a.z - b.z);
+  const ordered = [...layout.elements]
+    .filter((el) => !promoted.has(el.id))
+    .sort((a, b) => a.z - b.z);
 
   for (const el of ordered) {
     await renderElement(pres, slide, el, sourceImage, dims);
@@ -117,7 +153,8 @@ async function renderElement(
   switch (el.type) {
     case "picture": {
       const data = await cropToDataUri(sourceImage, el.sourceCrop);
-      slide.addImage({ data, ...rect });
+      // sizing:'contain' preserves the cropped image's aspect ratio within the bbox.
+      slide.addImage({ data, ...rect, sizing: { type: 'contain', w: rect.w, h: rect.h } });
       return;
     }
     case "auto_shape": {
@@ -129,6 +166,9 @@ async function renderElement(
           width: el.line.width,
         };
       }
+      // Skip invisible shapes (no fill AND no line) — they add nothing visually
+      // and pollute the PowerPoint element tree making editing harder.
+      if (!el.fill && !el.line) return;
       slide.addShape(pres.ShapeType.rect, opts);
       return;
     }
@@ -140,26 +180,32 @@ async function renderElement(
       return;
     }
     case "textbox": {
-      // Add generous inset so text doesn't touch the bbox edge, and enable
-      // autoFit + wrap so text is never silently clipped when the Vision-extracted
-      // bbox is slightly tighter than the rendered font metrics require.
-      const INSET_IN = 0.03; // ~2px padding at 10-inch slide width
+      // Expand bbox by a small inset so text isn't clipped at the edge.
+      const INSET_IN = 0.04; // ~3px at 10-inch slide
+      const rawX = Math.max(0, rect.x - INSET_IN);
+      const rawY = Math.max(0, rect.y - INSET_IN);
+      const rawW = rect.w + INSET_IN * 2;
+      const rawH = rect.h + INSET_IN * 2;
+      // Clamp to slide bounds so text box never extends beyond the slide edge.
+      const clampedW = Math.min(rawW, dims.w - rawX);
+      const clampedH = Math.min(rawH, dims.h - rawY);
       const textOpts: PptxGenJS.TextPropsOptions = {
-        x: Math.max(0, rect.x - INSET_IN),
-        y: Math.max(0, rect.y - INSET_IN),
-        w: rect.w + INSET_IN * 2,
-        h: rect.h + INSET_IN * 2,
+        x: rawX,
+        y: rawY,
+        w: clampedW,
+        h: clampedH,
         fontSize: el.fontSize,
         bold: el.bold ?? false,
         italic: el.italic ?? false,
-        align: el.align ?? "left",
-        valign: "top",
-        // Prevent text from being clipped: shrink font if still too big after expansion
-        autoFit: false,
-        shrinkText: true,
+        align: el.align ?? 'left',
+        valign: el.valign ?? 'top',
+        // autoFit allows PowerPoint to expand the textbox if needed;
+        // it's safer than shrinkText which can make text illegibly small.
+        autoFit: true,
         wrap: true,
       };
       if (el.color) textOpts.color = hex(el.color);
+      if (el.fontFace) textOpts.fontFace = el.fontFace;
       slide.addText(el.text, textOpts);
       return;
     }
